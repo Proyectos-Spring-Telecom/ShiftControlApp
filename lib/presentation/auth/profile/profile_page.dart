@@ -5,6 +5,8 @@ import '../../../core/constants/route_constants.dart';
 import '../../controllers/auth_controller.dart';
 import '../../turnos/control_turnos_colors.dart';
 import '../../widgets/loading_overlay.dart';
+import 'cambiar_contrasena_page.dart';
+import 'crear_nip_page.dart';
 import 'profile_colors.dart';
 
 class ProfilePage extends ConsumerStatefulWidget {
@@ -160,7 +162,13 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                       child: SizedBox(
                         height: 48,
                         child: ElevatedButton(
-                          onPressed: () {},
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) => const CrearNipPage(),
+                              ),
+                            );
+                          },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: ProfileColors.buttonPrimary,
                             foregroundColor: Colors.white,
@@ -177,7 +185,13 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                       child: SizedBox(
                         height: 48,
                         child: ElevatedButton(
-                          onPressed: () {},
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) => const CambiarContrasenaPage(),
+                              ),
+                            );
+                          },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: ProfileColors.accentWine,
                             foregroundColor: Colors.white,
@@ -212,7 +226,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    child: const Text('Cerrar Sesiónes'),
+                    child: const Text('Cerrar Sesión'),
                   ),
                 ),
               ],

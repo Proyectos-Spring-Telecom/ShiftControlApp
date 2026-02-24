@@ -1,10 +1,14 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../controllers/auth_controller.dart';
 import '../models/checklist_type.dart';
 import 'inicio_turno_colors.dart';
 import '../captura_odometro/captura_odometro_page.dart';
+import '../captura_odometro/dashed_border_box.dart';
 import '../escanear_vehiculo/escanear_vehiculo_page.dart';
 
 class InicioTurnoPage extends ConsumerStatefulWidget {
@@ -25,6 +29,15 @@ class InicioTurnoPage extends ConsumerStatefulWidget {
 
 class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
   String? _vehiculoSeleccionado;
+  File? _fotoResguardo;
+  final ImagePicker _picker = ImagePicker();
+
+  Future<void> _tomarFotoResguardo() async {
+    final XFile? photo = await _picker.pickImage(source: ImageSource.camera);
+    if (photo != null && mounted) {
+      setState(() => _fotoResguardo = File(photo.path));
+    }
+  }
 
   void _abrirEscanerVehiculo() {
     if (widget.onEscanearVehiculoTap != null) {
@@ -87,6 +100,10 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
                   _buildHeader(context),
                   const SizedBox(height: 28),
                   _buildAsignacionRequerida(context),
+                  if (!isApertura) ...[
+                    const SizedBox(height: 24),
+                    _buildFotoResguardo(context),
+                  ],
                   const SizedBox(height: 24),
                   _buildSelectores(context, operadorNombre),
                   const SizedBox(height: 20),
@@ -206,6 +223,78 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: InicioTurnoColors.textPrimary(context),
                 ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFotoResguardo(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: InicioTurnoColors.cardBackground(context),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Foto de resguardo',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: InicioTurnoColors.textPrimary(context),
+                  fontWeight: FontWeight.bold,
+                ),
+          ),
+          const SizedBox(height: 12),
+          DashedBorderBox(
+            height: 220,
+            child: Material(
+              color: InicioTurnoColors.progressUnfilled(context),
+              child: InkWell(
+                onTap: _tomarFotoResguardo,
+                child: _fotoResguardo != null
+                    ? Image.file(
+                        _fotoResguardo!,
+                        width: double.infinity,
+                        height: double.infinity,
+                        fit: BoxFit.cover,
+                      )
+                    : Container(
+                        width: double.infinity,
+                        alignment: Alignment.center,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.camera_alt_outlined,
+                              color: InicioTurnoColors.placeholder(context),
+                              size: 40,
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              'Foto Resguardo',
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    color: InicioTurnoColors.placeholder(context),
+                                  ),
+                            ),
+                          ],
+                        ),
+                      ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Center(
+            child: Text(
+              'Asegúrate que la imagen sea clara y legible',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: InicioTurnoColors.textSecondary(context),
+                  ),
+              textAlign: TextAlign.center,
+            ),
           ),
         ],
       ),

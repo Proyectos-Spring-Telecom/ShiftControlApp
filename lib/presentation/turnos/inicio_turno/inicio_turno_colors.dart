@@ -6,7 +6,7 @@ class InicioTurnoColors {
 
   // Colores de acento (iguales en ambos temas)
   static const Color accent = Color(0xFF681330);
-  static const Color infoIcon = Color(0xFF48CAE4);
+  static const Color infoIcon = Color(0xFF7EB8E8);
   static const Color infoBoxBorder = Color(0xFF5A9FB8);
   static const Color buttonPrimary = Color(0xFF001C6A);
   static const Color progressFilled = Color(0xFF681330);

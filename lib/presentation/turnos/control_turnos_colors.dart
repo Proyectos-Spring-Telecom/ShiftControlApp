@@ -7,7 +7,7 @@ class ControlTurnosColors {
   // Colores de acento (iguales en ambos temas)
   static const Color accent = Color(0xFFEE5D88);
   static const Color statusOnShift = Color(0xFF4CAF50);
-  static const Color iconCyan = Color(0xFF48CAE4);
+  static const Color iconCyan = Color(0xFF7eb8e8);
   static const Color iconOrange = Color(0xFFFF9800);
   static const Color iconGreen = Color(0xFF4CAF50);
 

@@ -67,6 +67,8 @@ class _LucesVehiculoPageState extends State<LucesVehiculoPage> {
                 children: [
                   _buildProgress(context),
                   const SizedBox(height: 20),
+                  _buildInstructions(context),
+                  const SizedBox(height: 20),
                   _buildLucesCard(context),
                 ],
               ),
@@ -111,6 +113,15 @@ class _LucesVehiculoPageState extends State<LucesVehiculoPage> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildInstructions(BuildContext context) {
+    return Text(
+      'Selecciona las luces que se encuentren en buen estado.',
+      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: LucesVehiculoColors.textSecondary(context),
+          ),
     );
   }
 

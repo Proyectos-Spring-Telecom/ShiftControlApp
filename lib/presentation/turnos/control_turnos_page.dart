@@ -7,9 +7,7 @@ import 'inicio_turno/inicio_turno_page.dart';
 import 'models/checklist_type.dart';
 import 'reporte_incidente/reporte_incidente_page.dart';
 import 'registro_combustible/registro_combustible_page.dart';
-
-/// Estado del turno actual.
-enum TurnoStatus { enTurno, turnoCerrado }
+import 'turno_status_provider.dart';
 
 class ControlTurnosPage extends ConsumerStatefulWidget {
   const ControlTurnosPage({
@@ -34,14 +32,7 @@ class ControlTurnosPage extends ConsumerStatefulWidget {
 }
 
 class _ControlTurnosPageState extends ConsumerState<ControlTurnosPage> {
-  // ============================================================
-  // CAMBIAR ESTA VARIABLE PARA PROBAR LAS VALIDACIONES:
-  // - TurnoStatus.enTurno: El operador está en turno activo
-  // - TurnoStatus.turnoCerrado: El turno está cerrado
-  // ============================================================
-  TurnoStatus _turnoStatus = TurnoStatus.enTurno;
-
-  bool get _isEnTurno => _turnoStatus == TurnoStatus.enTurno;
+  bool get _isEnTurno => ref.watch(turnoStatusProvider) == TurnoStatus.enTurno;
 
   @override
   Widget build(BuildContext context) {
@@ -142,7 +133,7 @@ class _ControlTurnosPageState extends ConsumerState<ControlTurnosPage> {
                   }
                 : null,
             backgroundColor: _isEnTurno
-                ? ControlTurnosColors.accent
+                ? const Color(0xFFFF9800)
                 : ControlTurnosColors.disabled(context),
             child: Icon(
               Icons.warning_amber_rounded,
@@ -188,6 +179,7 @@ class _ControlTurnosPageState extends ConsumerState<ControlTurnosPage> {
             title: 'Cierre',
             subtitle: 'Finalizar jornada actual',
             enabled: cierreEnabled,
+            iconColorOverride: const Color(0xFF7eb8e8),
             onTap: cierreEnabled
                 ? () {
                     if (widget.onCierreTap != null) {
@@ -234,7 +226,7 @@ class _ControlTurnosPageState extends ConsumerState<ControlTurnosPage> {
             children: [
             Row(
               children: [
-                _StatusPill(status: _turnoStatus),
+                _StatusPill(status: ref.watch(turnoStatusProvider)),
                 const Spacer(),
                 Text(
                   'Folio: #8821',
@@ -427,6 +419,7 @@ class _ActionCard extends StatelessWidget {
     required this.subtitle,
     this.onTap,
     this.enabled = true,
+    this.iconColorOverride,
   });
 
   final IconData icon;
@@ -434,11 +427,12 @@ class _ActionCard extends StatelessWidget {
   final String subtitle;
   final VoidCallback? onTap;
   final bool enabled;
+  final Color? iconColorOverride;
 
   @override
   Widget build(BuildContext context) {
     final iconColor = enabled 
-        ? ControlTurnosColors.accent 
+        ? (iconColorOverride ?? ControlTurnosColors.accent)
         : ControlTurnosColors.disabled(context);
     final titleColor = enabled 
         ? ControlTurnosColors.textPrimary(context) 

@@ -9,7 +9,7 @@ class ResumenTurnoColors {
   static const Color statusLabelGreen = Color(0xFF86EFAC);
   static const Color accentBlue = Color(0xFF60A5FA);
   static const Color accentGreen = Color(0xFF4ADE80);
-  static const Color iconClockBg = Color(0xFF3B82F6);
+  static const Color iconClockBg = Color(0xFF7eb8e8);
   static const Color iconLocationBg = Color(0xFF4CAF50);
   static const Color buttonIniciar = Color(0xFF681330);
 

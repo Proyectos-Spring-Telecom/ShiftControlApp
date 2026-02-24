@@ -6,7 +6,7 @@ class HistorialTurnosColors {
 
   // Colores de acento (iguales en ambos temas)
   static const Color accentWine = Color(0xFF681330);
-  static const Color cardBorderAyer = Color(0xFF001C6A);
+  static const Color cardBorderAyer = Color(0xFF7EB8E8);
 
   static Color background(BuildContext context) {
     return Theme.of(context).brightness == Brightness.dark

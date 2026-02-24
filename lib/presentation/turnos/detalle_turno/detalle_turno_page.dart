@@ -114,6 +114,8 @@ class DetalleTurnoPage extends StatelessWidget {
           const SizedBox(height: 20),
           _buildCardEmpleadoVehiculo(context),
           const SizedBox(height: 16),
+          _buildCardEstadoVehiculo(context),
+          const SizedBox(height: 16),
           _buildCardHorario(context),
           const SizedBox(height: 16),
           _buildCardOdometro(context),
@@ -396,6 +398,76 @@ class DetalleTurnoPage extends StatelessWidget {
             fontSize: 12,
             fontWeight: FontWeight.w500,
           ),
+    );
+  }
+
+  Widget _buildCardEstadoVehiculo(BuildContext context) {
+    const items = [
+      ('Estado de la carrocería', 'Bueno'),
+      ('Estado de indicadores', 'Bueno'),
+      ('Nivel de Gasolina', '95 %'),
+      ('Estado de las Luces', 'Bueno'),
+      ('Estado de accesorios', 'Bueno'),
+      ('Documentación', 'En regla'),
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: HistorialTurnosColors.cardBackground(context),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.checklist_rtl, color: HistorialTurnosColors.accentWine, size: 22),
+              const SizedBox(width: 8),
+              Text(
+                'Estado del Vehículo',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: HistorialTurnosColors.textPrimary(context),
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          for (int i = 0; i < items.length; i++) ...[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Text(
+                    '${items[i].$1}:',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: HistorialTurnosColors.textSecondary(context),
+                          fontWeight: FontWeight.w500,
+                        ),
+                  ),
+                ),
+                Text(
+                  items[i].$2,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: HistorialTurnosColors.textPrimary(context),
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+              ],
+            ),
+            if (i < items.length - 1)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Divider(
+                  color: HistorialTurnosColors.textSecondary(context).withValues(alpha: 0.35),
+                  height: 1,
+                  thickness: 1,
+                ),
+              ),
+          ],
+        ],
+      ),
     );
   }
 

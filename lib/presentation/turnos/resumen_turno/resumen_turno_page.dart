@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gradient_slide_to_act/gradient_slide_to_act.dart';
+import 'package:quickalert/quickalert.dart';
 
+import '../indicadores_testigo/indicadores_testigo_colors.dart';
 import '../models/checklist_type.dart';
+import '../turno_status_provider.dart';
 import 'resumen_turno_colors.dart';
 
-class ResumenTurnoPage extends StatelessWidget {
+class ResumenTurnoPage extends ConsumerStatefulWidget {
   const ResumenTurnoPage({
     super.key,
     this.checklistType = ChecklistType.apertura,
@@ -12,6 +16,11 @@ class ResumenTurnoPage extends StatelessWidget {
 
   final ChecklistType checklistType;
 
+  @override
+  ConsumerState<ResumenTurnoPage> createState() => _ResumenTurnoPageState();
+}
+
+class _ResumenTurnoPageState extends ConsumerState<ResumenTurnoPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -49,6 +58,10 @@ class ResumenTurnoPage extends StatelessWidget {
                   const SizedBox(height: 10),
                   _buildInformacionGeneralCard(context),
                   const SizedBox(height: 24),
+                  _buildSectionHeading(context, 'Estado del Vehículo'),
+                  const SizedBox(height: 10),
+                  _buildEstadoVehiculoCard(context),
+                  const SizedBox(height: 24),
                   _buildSectionHeading(context, 'Tiempo y Ubicación'),
                   const SizedBox(height: 10),
                   _buildFechaHoraCard(context),
@@ -62,7 +75,7 @@ class ResumenTurnoPage extends StatelessWidget {
               ),
             ),
           ),
-          _buildIniciarTurnoButton(context),
+          _buildIniciarTurnoButton(context, widget.checklistType),
         ],
       ),
     );
@@ -81,16 +94,16 @@ class ResumenTurnoPage extends StatelessWidget {
   }
 
   Widget _buildEstadoCard(BuildContext context) {
-    final isApertura = checklistType == ChecklistType.apertura;
+    final isApertura = widget.checklistType == ChecklistType.apertura;
     final statusText = isApertura ? 'Listo para iniciar' : 'Cierre de turno';
     final statusColor = isApertura 
-        ? ResumenTurnoColors.statusTextGreen 
+        ? IndicadoresTestigoColors.indicatorActive(context) 
         : ResumenTurnoColors.iconClockBg;
     final statusLabelColor = isApertura 
-        ? ResumenTurnoColors.statusLabelGreen 
+        ? IndicadoresTestigoColors.indicatorActive(context) 
         : ResumenTurnoColors.iconClockBg;
     final cardBgColor = isApertura 
-        ? ResumenTurnoColors.statusCardBackground(context) 
+        ? IndicadoresTestigoColors.indicatorActiveBg(context) 
         : ResumenTurnoColors.iconClockBg.withValues(alpha: 0.15);
     final statusIcon = isApertura 
         ? Icons.check_circle_outline 
@@ -165,6 +178,70 @@ class ResumenTurnoPage extends StatelessWidget {
           _buildInfoRow(context, 'Operador', 'Juan Pérez García', 'ID: OP-4592', Icons.person_outline),
         ],
       ),
+    );
+  }
+
+  Widget _buildEstadoVehiculoCard(BuildContext context) {
+    const items = [
+      ('Estado de la carrocería', 'Bueno'),
+      ('Estado de indicadores', 'Bueno'),
+      ('Nivel de Gasolina', '95 %'),
+      ('Estado de las Luces', 'Bueno'),
+      ('Estado de accesorios', 'Bueno'),
+      ('Documentación', 'En regla'),
+    ];
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: ResumenTurnoColors.cardBackground(context),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        children: [
+          for (int i = 0; i < items.length; i++) ...[
+            _buildEstadoVehiculoRow(
+              context,
+              label: items[i].$1,
+              value: items[i].$2,
+            ),
+            if (i < items.length - 1)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Divider(
+                  color: ResumenTurnoColors.textSecondary(context).withValues(alpha: 0.4),
+                  height: 1,
+                  thickness: 1,
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEstadoVehiculoRow(BuildContext context, {required String label, required String value}) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: Text(
+            '$label:',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: ResumenTurnoColors.textSecondary(context),
+                  fontWeight: FontWeight.w500,
+                ),
+          ),
+        ),
+        Text(
+          value,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: ResumenTurnoColors.textPrimary(context),
+                fontWeight: FontWeight.w600,
+              ),
+        ),
+      ],
     );
   }
 
@@ -384,10 +461,22 @@ class ResumenTurnoPage extends StatelessWidget {
     );
   }
 
-  Widget _buildIniciarTurnoButton(BuildContext context) {
+  Widget _buildIniciarTurnoButton(BuildContext context, ChecklistType checklistType) {
     final isApertura = checklistType == ChecklistType.apertura;
     final buttonText = isApertura ? 'Iniciar Turno' : 'Cerrar Turno';
-    
+    final borderColor = isApertura
+        ? IndicadoresTestigoColors.indicatorActive(context)
+        : const Color(0xFF385C51);
+    final thumbColor = isApertura
+        ? IndicadoresTestigoColors.indicatorActive(context)
+        : const Color(0xFF4ADE80);
+    final gradientColors = isApertura
+        ? [
+            IndicadoresTestigoColors.indicatorActiveBg(context),
+            IndicadoresTestigoColors.indicatorActive(context),
+          ]
+        : const [Color(0xFF60A5FA), Color(0xFF4ADE80)];
+
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -395,30 +484,50 @@ class ResumenTurnoPage extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(40),
             border: Border.all(
-              color: const Color(0xFF385C51),
+              color: borderColor,
               width: 2,
             ),
           ),
           child: GradientSlideToAct(
             width: MediaQuery.of(context).size.width - 42,
             dragableIcon: Icons.chevron_right,
-            dragableIconBackgroundColor: const Color(0xFF4ADE80),
+            dragableIconBackgroundColor: thumbColor,
             text: buttonText,
             textStyle: Theme.of(context).textTheme.titleMedium?.copyWith(
                   color: ResumenTurnoColors.textPrimary(context),
                   fontWeight: FontWeight.w500,
                 ) ?? const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
             backgroundColor: ResumenTurnoColors.cardBackground(context),
-            onSubmit: () {
-              Navigator.of(context).popUntil((route) => route.isFirst);
+            onSubmit: () async {
+              ref.read(turnoStatusProvider.notifier).state =
+                  isApertura ? TurnoStatus.enTurno : TurnoStatus.turnoCerrado;
+              if (!context.mounted) return;
+              final navigator = Navigator.of(context);
+              if (isApertura) {
+                await QuickAlert.show(
+                  context: context,
+                  type: QuickAlertType.success,
+                  title: 'Turno Iniciado',
+                  text: 'El turno se ha iniciado y el registro se guardó de manera exitosa.',
+                  confirmBtnText: 'Aceptar',
+                );
+              } else {
+                await QuickAlert.show(
+                  context: context,
+                  type: QuickAlertType.success,
+                  title: 'Turno Cerrado',
+                  text: 'El turno se ha cerrado y el registro se guardó de manera exitosa.',
+                  confirmBtnText: 'Aceptar',
+                );
+              }
+              if (context.mounted) {
+                navigator.popUntil((route) => route.isFirst);
+              }
             },
-            gradient: const LinearGradient(
+            gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomCenter,
-              colors: [
-                Color(0xFF60A5FA),
-                Color(0xFF4ADE80),
-              ],
+              colors: gradientColors,
             ),
           ),
         ),

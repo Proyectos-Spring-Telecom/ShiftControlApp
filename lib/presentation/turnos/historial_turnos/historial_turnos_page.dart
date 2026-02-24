@@ -100,7 +100,7 @@ class _HistorialTurnosPageState extends State<HistorialTurnosPage> {
         elevation: 0,
         leading: IconButton(
           icon: Icon(
-            widget.onOpenDrawer != null ? Icons.menu : Icons.arrow_back,
+            Icons.menu,
             color: HistorialTurnosColors.textPrimary(context),
           ),
           onPressed: () {
@@ -122,12 +122,6 @@ class _HistorialTurnosPageState extends State<HistorialTurnosPage> {
                 ),
           ),
         ),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.filter_list, color: HistorialTurnosColors.textPrimary(context)),
-            onPressed: () {},
-          ),
-        ],
       ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -169,11 +163,6 @@ class _HistorialTurnosPageState extends State<HistorialTurnosPage> {
             ),
           ),
         ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {},
-        backgroundColor: HistorialTurnosColors.accentWine,
-        child: const Icon(Icons.add, color: Colors.white),
       ),
     );
   }

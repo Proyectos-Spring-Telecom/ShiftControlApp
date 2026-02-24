@@ -6,6 +6,7 @@ import '../../widgets/loading_overlay.dart';
 import '../../../core/constants/route_constants.dart';
 import '../../../core/utils/validators.dart';
 import 'login_colors.dart';
+import 'recuperar_contrasena_page.dart';
 
 enum LoginMode { credentials, nip }
 
@@ -127,6 +128,26 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                               ),
                               onPressed: () =>
                                   setState(() => _obscurePassword = !_obscurePassword),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: GestureDetector(
+                              onTap: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute<void>(
+                                    builder: (_) => const RecuperarContrasenaPage(),
+                                  ),
+                                );
+                              },
+                              child: Text(
+                                '¿Olvidaste tu contraseña?',
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: LoginColors.button,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                              ),
                             ),
                           ),
                         ] else ...[

@@ -63,6 +63,8 @@ class _NivelesFluidoPageState extends State<NivelesFluidoPage> {
                 children: [
                   _buildProgress(context),
                   const SizedBox(height: 20),
+                  _buildInstructions(context),
+                  const SizedBox(height: 20),
                   _buildNivelesCard(context),
                 ],
               ),
@@ -107,6 +109,15 @@ class _NivelesFluidoPageState extends State<NivelesFluidoPage> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildInstructions(BuildContext context) {
+    return Text(
+      'Marca el nivel de porcentaje de cada nivel de fluido.',
+      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: NivelesFluidoColors.textSecondary(context),
+          ),
     );
   }
 

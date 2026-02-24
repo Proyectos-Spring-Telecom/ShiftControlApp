@@ -226,7 +226,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    child: const Text('Cerrar Sesión'),
+                    child: const Text('Cerrar Sesiónes'),
                   ),
                 ),
               ],

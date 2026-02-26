@@ -1,23 +1,30 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/errors/app_exception.dart';
+import '../../../features/profile/models/update_nip_request.dart';
+import '../../../features/profile/services/profile_service.dart';
+import '../../controllers/auth_controller.dart';
 import '../../widgets/app_alert_banner.dart';
+import '../../widgets/loading_overlay.dart';
 import 'profile_colors.dart';
 
-class CrearNipPage extends StatefulWidget {
+class CrearNipPage extends ConsumerStatefulWidget {
   const CrearNipPage({super.key});
 
   @override
-  State<CrearNipPage> createState() => _CrearNipPageState();
+  ConsumerState<CrearNipPage> createState() => _CrearNipPageState();
 }
 
-class _CrearNipPageState extends State<CrearNipPage> {
+class _CrearNipPageState extends ConsumerState<CrearNipPage> {
   final _formKey = GlobalKey<FormState>();
   final _nuevoNipController = TextEditingController();
   final _confirmarNipController = TextEditingController();
-  
+
   bool _obscureNuevoNip = true;
   bool _obscureConfirmarNip = true;
+  bool _isLoading = false;
   String? _errorNuevoNip;
   String? _errorConfirmarNip;
 
@@ -100,25 +107,87 @@ class _CrearNipPageState extends State<CrearNipPage> {
     });
   }
 
-  void _guardarNip() {
+  Future<void> _guardarNip() async {
     _validarCampos();
-    
-    if (_errorNuevoNip == null && _errorConfirmarNip == null) {
+
+    if (_errorNuevoNip != null || _errorConfirmarNip != null) {
+      showAppAlertBanner(
+        context,
+        type: AppAlertType.info,
+        title: 'Revisa los datos',
+        message: 'Completa correctamente los campos antes de continuar.',
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() => _isLoading = true);
+
+    // Enviar el valor de "Confirmar NIP" como pinHash (según especificación).
+    final request = UpdateNipRequest(
+      pinHash: _confirmarNipController.text.trim(),
+    );
+
+    try {
+      final profileService = ref.read(profileServiceProvider);
+      await profileService.updateUserNip(request);
+
+      if (!mounted) return;
+      setState(() => _isLoading = false);
       showAppAlertBanner(
         context,
         type: AppAlertType.success,
-        title: 'NIP guardado',
-        message: 'El NIP se ha guardado correctamente.',
+        title: 'NIP configurado',
+        message: 'Tu NIP fue configurado correctamente.',
         onDismissed: () => Navigator.of(context).pop(),
+      );
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      if (e.code == '401') {
+        showAppAlertBanner(
+          context,
+          type: AppAlertType.info,
+          title: 'Sesión expirada',
+          message: e.message,
+          onDismissed: () => Navigator.of(context).pop(),
+        );
+      } else {
+        showAppAlertBanner(
+          context,
+          type: AppAlertType.error,
+          title: 'Error',
+          message: e.message,
+        );
+      }
+    } on NetworkException catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      showAppAlertBanner(
+        context,
+        type: AppAlertType.error,
+        title: 'Error',
+        message: e.message,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      showAppAlertBanner(
+        context,
+        type: AppAlertType.error,
+        title: 'Error',
+        message: 'No se pudo guardar el NIP. Intenta de nuevo.',
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: ProfileColors.background(context),
-      appBar: AppBar(
+    return LoadingOverlay(
+      isLoading: _isLoading,
+      child: Scaffold(
+        backgroundColor: ProfileColors.background(context),
+        appBar: AppBar(
         backgroundColor: ProfileColors.background(context),
         elevation: 0,
         leading: IconButton(
@@ -155,6 +224,7 @@ class _CrearNipPageState extends State<CrearNipPage> {
           ),
         ),
       ),
+    ),
     );
   }
 

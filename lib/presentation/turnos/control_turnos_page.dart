@@ -37,7 +37,7 @@ class _ControlTurnosPageState extends ConsumerState<ControlTurnosPage> {
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(authControllerProvider).user;
-    final welcomeEmail = user?.email ?? 'Operador';
+    final welcomeLabel = user?.roleName ?? user?.name ?? user?.email ?? 'Operador';
 
     return Scaffold(
       backgroundColor: ControlTurnosColors.background(context),
@@ -74,7 +74,7 @@ class _ControlTurnosPageState extends ConsumerState<ControlTurnosPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Bienvenido, $welcomeEmail',
+              'Bienvenido, $welcomeLabel',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     color: ControlTurnosColors.textSecondary(context),
                     fontSize: 18,

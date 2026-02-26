@@ -1,16 +1,24 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../controllers/auth_controller.dart';
 import '../../widgets/app_alert_banner.dart';
 import 'login_colors.dart';
 
-class NuevaContrasenaPage extends StatefulWidget {
-  const NuevaContrasenaPage({super.key});
+// ! Ruta pública accesible desde navegador (#/nueva-contrasena?token=...)
+// ? Token desde URL (Uri.base.fragment) o pasado por el router.
+
+class NuevaContrasenaPage extends ConsumerStatefulWidget {
+  const NuevaContrasenaPage({super.key, this.token});
+
+  /// Token pasado por el router (p. ej. desde name="/nueva-contrasena?token=...").
+  final String? token;
 
   @override
-  State<NuevaContrasenaPage> createState() => _NuevaContrasenaPageState();
+  ConsumerState<NuevaContrasenaPage> createState() => _NuevaContrasenaPageState();
 }
 
-class _NuevaContrasenaPageState extends State<NuevaContrasenaPage> {
+class _NuevaContrasenaPageState extends ConsumerState<NuevaContrasenaPage> {
   final _formKey = GlobalKey<FormState>();
   final _nuevaContrasenaController = TextEditingController();
   final _confirmarContrasenaController = TextEditingController();
@@ -21,6 +29,50 @@ class _NuevaContrasenaPageState extends State<NuevaContrasenaPage> {
 
   String? _errorNueva;
   String? _errorConfirmar;
+
+  /// Token extraído de la URL (hash routing: fragment contiene /nueva-contrasena?token=...).
+  late final String? _token;
+
+  /// Lee el token desde el fragment con hash routing (#/nueva-contrasena?token=...).
+  String? _getTokenFromUrl() {
+    final uri = Uri.base;
+    if (uri.fragment.isEmpty) return null;
+
+    final fragment = uri.fragment;
+    // Ejemplo: "/nueva-contrasena?token=123456"
+    final fragmentUri = Uri.parse(fragment);
+    return fragmentUri.queryParameters['token'];
+  }
+
+  /// Muestra banner de error cuando no hay token. No navega.
+  void _mostrarErrorToken() {
+    if (!mounted) return;
+    showAppAlertBanner(
+      context,
+      type: AppAlertType.info,
+      title: 'Token requerido',
+      message: 'Token inválido o no proporcionado.',
+    );
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _token = widget.token ?? _getTokenFromUrl();
+
+    debugPrint('[NuevaContrasenaPage] Interfaz: NuevaContrasenaPage (restaurar contraseña)');
+    final tokenPreview = _token != null && _token!.length > 12
+        ? '${_token!.substring(0, 8)}...'
+        : (_token != null ? 'ok' : 'null');
+    debugPrint('[NuevaContrasenaPage] Token recibido: $tokenPreview');
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_token == null || _token!.isEmpty) {
+        _mostrarErrorToken();
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -87,26 +139,25 @@ class _NuevaContrasenaPageState extends State<NuevaContrasenaPage> {
   Future<void> _guardarContrasena() async {
     _validarCampos();
 
-    if (_errorNueva == null && _errorConfirmar == null) {
-      setState(() => _isLoading = true);
+    if (_errorNueva != null || _errorConfirmar != null) return;
 
-      await Future.delayed(const Duration(seconds: 2));
+    final token = _token;
+    if (token == null || token.isEmpty) {
+      _mostrarErrorToken();
+      return;
+    }
 
-      if (mounted) {
-        setState(() => _isLoading = false);
+    setState(() => _isLoading = true);
 
-        showAppAlertBanner(
-          context,
-          type: AppAlertType.success,
-          title: 'Contraseña actualizada',
-          message: 'La contraseña se ha actualizado correctamente.',
-          onDismissed: () {
-            if (context.mounted) {
-              Navigator.of(context).popUntil((route) => route.isFirst);
-            }
-          },
+    await ref.read(authControllerProvider.notifier).cambiarContrasenaDesdeRecuperacion(
+          context: context,
+          token: token,
+          passwordNueva: _nuevaContrasenaController.text.trim(),
+          passwordConfirmacion: _confirmarContrasenaController.text.trim(),
         );
-      }
+
+    if (mounted) {
+      setState(() => _isLoading = false);
     }
   }
 

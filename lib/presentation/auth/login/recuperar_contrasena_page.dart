@@ -1,18 +1,20 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/utils/validators.dart';
+import '../../controllers/auth_controller.dart';
 import '../../widgets/app_alert_banner.dart';
 import 'login_colors.dart';
-import 'nueva_contrasena_page.dart';
 
-class RecuperarContrasenaPage extends StatefulWidget {
+class RecuperarContrasenaPage extends ConsumerStatefulWidget {
   const RecuperarContrasenaPage({super.key});
 
   @override
-  State<RecuperarContrasenaPage> createState() => _RecuperarContrasenaPageState();
+  ConsumerState<RecuperarContrasenaPage> createState() => _RecuperarContrasenaPageState();
 }
 
-class _RecuperarContrasenaPageState extends State<RecuperarContrasenaPage> {
+class _RecuperarContrasenaPageState extends ConsumerState<RecuperarContrasenaPage> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   bool _isLoading = false;
@@ -24,28 +26,25 @@ class _RecuperarContrasenaPageState extends State<RecuperarContrasenaPage> {
   }
 
   Future<void> _enviarInstrucciones() async {
-    if (!_formKey.currentState!.validate()) return;
+    debugPrint('[RecuperarContrasenaPage] Enviar pulsado');
+    if (!_formKey.currentState!.validate()) {
+      debugPrint('[RecuperarContrasenaPage] Validación fallida, no se envía');
+      return;
+    }
+
+    final userName = _emailController.text.trim();
+    debugPrint('[RecuperarContrasenaPage] Enviando recuperarAcceso userName=$userName');
 
     setState(() => _isLoading = true);
 
-    // Simular envío de correo
-    await Future.delayed(const Duration(seconds: 2));
+    await ref.read(authControllerProvider.notifier).recuperarAcceso(
+          context: context,
+          userName: userName,
+        );
 
     if (mounted) {
       setState(() => _isLoading = false);
-      
-      showAppAlertBanner(
-        context,
-        type: AppAlertType.success,
-        title: 'Mensaje enviado',
-        message: 'Se han enviado las instrucciones a tu correo.',
-      );
-      
-      Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => const NuevaContrasenaPage(),
-        ),
-      );
+      debugPrint('[RecuperarContrasenaPage] Flujo Enviar finalizado (mounted=$mounted)');
     }
   }
 

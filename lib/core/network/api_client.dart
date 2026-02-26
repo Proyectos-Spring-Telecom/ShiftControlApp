@@ -12,5 +12,10 @@ abstract interface class ApiClient {
     dynamic body,
     Map<String, String>? headers,
   });
+  Future<Map<String, dynamic>> patch(
+    String path, {
+    dynamic body,
+    Map<String, String>? headers,
+  });
   Future<Map<String, dynamic>> delete(String path, {Map<String, String>? headers});
 }

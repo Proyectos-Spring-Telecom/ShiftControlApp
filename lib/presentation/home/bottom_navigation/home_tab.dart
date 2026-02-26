@@ -15,9 +15,10 @@ class HomeTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(authControllerProvider).user;
-    final welcomeLabel = user?.name != null && user!.name.isNotEmpty
-        ? 'Bienvenido, ${user.name}'
-        : (user?.id != null ? 'Bienvenido, ${user!.id}' : 'Bienvenido, appi.1529');
+    final rolNombre = user?.roleName ?? user?.name;
+    final welcomeLabel = (rolNombre != null && rolNombre.isNotEmpty)
+        ? 'Bienvenido, $rolNombre'
+        : (user?.email != null ? 'Bienvenido, ${user!.email}' : 'Bienvenido');
 
     return Stack(
       fit: StackFit.expand,

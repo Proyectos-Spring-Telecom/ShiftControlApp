@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../features/auth/services/auth_service.dart';
 import '../../controllers/auth_controller.dart';
+import '../../widgets/app_alert_banner.dart';
 import '../../widgets/loading_overlay.dart';
 import '../../../core/constants/route_constants.dart';
 import '../../../core/utils/validators.dart';
@@ -35,8 +37,23 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   }
 
   Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
-    
+    if (_loginMode == LoginMode.credentials) {
+      if (!_formKey.currentState!.validate()) return;
+    } else {
+      if (!_formKey.currentState!.validate()) return;
+      final email = await ref.read(authServiceProvider).getLastLoginEmail();
+      final emailTrim = email?.trim() ?? '';
+      if (emailTrim.isEmpty) {
+        showAppAlertBanner(
+          context,
+          type: AppAlertType.info,
+          title: 'Correo requerido',
+          message: 'No hay credenciales guardadas. Inicia sesión con correo y contraseña primero.',
+        );
+        return;
+      }
+    }
+
     bool success;
     if (_loginMode == LoginMode.credentials) {
       success = await ref.read(authControllerProvider.notifier).login(
@@ -44,22 +61,52 @@ class _LoginPageState extends ConsumerState<LoginPage> {
             _passwordController.text,
           );
     } else {
+      final email = await ref.read(authServiceProvider).getLastLoginEmail();
+      final emailTrim = email?.trim() ?? '';
       success = await ref.read(authControllerProvider.notifier).loginWithNip(
+            emailTrim,
             _nipController.text.trim(),
           );
     }
-    
-    if (success && mounted) {
+
+    if (!mounted) return;
+    if (success) {
+      final user = ref.read(authControllerProvider).user;
+      final rolNombre = user?.roleName ?? user?.name ?? 'Usuario';
+      showAppAlertBanner(
+        context,
+        type: AppAlertType.success,
+        title: 'Éxito',
+        message: 'Bienvenido, $rolNombre',
+      );
       Navigator.of(context).pushReplacementNamed(RouteConstants.home);
+    } else {
+      final errorMsg = ref.read(authControllerProvider).errorMessage;
+      final is401 = errorMsg != null && errorMsg.contains('autorizado');
+      showAppAlertBanner(
+        context,
+        type: is401 ? AppAlertType.info : AppAlertType.error,
+        title: is401 ? 'No autorizado' : 'Error al iniciar sesión',
+        message: errorMsg ?? 'No se pudo iniciar sesión. Revisa tus datos.',
+      );
     }
   }
 
   void _switchMode(LoginMode mode) {
     if (_loginMode != mode) {
-      setState(() {
-        _loginMode = mode;
-        _formKey.currentState?.reset();
-      });
+      setState(() => _loginMode = mode);
+      if (mode == LoginMode.credentials) {
+        ref.read(authServiceProvider).getLastLoginEmail().then((email) {
+          if (mounted && email != null && email.isNotEmpty) {
+            setState(() {
+              _emailController.text = email;
+              _passwordController.clear();
+            });
+          } else {
+            _formKey.currentState?.reset();
+          }
+        });
+      }
     }
   }
 

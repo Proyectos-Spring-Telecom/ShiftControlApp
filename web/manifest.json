@@ -1,7 +1,8 @@
 {
     "name": "Shift Control",
     "short_name": "Shift Control",
-    "start_url": ".",
+    "start_url": "/shiftcontrolapp/",
+    "scope": "/shiftcontrolapp/",
     "display": "standalone",
     "background_color": "#1A1A2E",
     "theme_color": "#001C6A",

@@ -6,4 +6,10 @@ abstract interface class AuthRepository {
   Future<void> logout();
   Future<UserEntity?> getCurrentUser();
   Future<bool> isLoggedIn();
+  Future<void> recuperarAcceso(String userName);
+  Future<void> cambiarContrasenaDesdeRecuperacion({
+    required String token,
+    required String passwordNueva,
+    required String passwordConfirmacion,
+  });
 }

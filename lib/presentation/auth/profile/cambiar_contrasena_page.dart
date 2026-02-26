@@ -1,16 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/errors/app_exception.dart';
+import '../../../features/profile/models/change_password_request.dart';
+import '../../../features/profile/services/profile_service.dart';
+import '../../controllers/auth_controller.dart';
 import '../../widgets/app_alert_banner.dart';
+import '../../widgets/loading_overlay.dart';
 import 'profile_colors.dart';
 
-class CambiarContrasenaPage extends StatefulWidget {
+class CambiarContrasenaPage extends ConsumerStatefulWidget {
   const CambiarContrasenaPage({super.key});
 
   @override
-  State<CambiarContrasenaPage> createState() => _CambiarContrasenaPageState();
+  ConsumerState<CambiarContrasenaPage> createState() => _CambiarContrasenaPageState();
 }
 
-class _CambiarContrasenaPageState extends State<CambiarContrasenaPage> {
+class _CambiarContrasenaPageState extends ConsumerState<CambiarContrasenaPage> {
   final _formKey = GlobalKey<FormState>();
   final _contrasenaActualController = TextEditingController();
   final _nuevaContrasenaController = TextEditingController();
@@ -19,6 +25,7 @@ class _CambiarContrasenaPageState extends State<CambiarContrasenaPage> {
   bool _obscureActual = true;
   bool _obscureNueva = true;
   bool _obscureConfirmar = true;
+  bool _isLoading = false;
 
   String? _errorActual;
   String? _errorNueva;
@@ -93,25 +100,91 @@ class _CambiarContrasenaPageState extends State<CambiarContrasenaPage> {
     });
   }
 
-  void _guardarContrasena() {
+  Future<void> _guardarContrasena() async {
     _validarCampos();
 
-    if (_errorActual == null && _errorNueva == null && _errorConfirmar == null) {
+    if (_errorActual != null || _errorNueva != null || _errorConfirmar != null) {
+      showAppAlertBanner(
+        context,
+        type: AppAlertType.info,
+        title: 'Revisa los datos',
+        message: 'Completa correctamente todos los campos antes de continuar.',
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() => _isLoading = true);
+
+    final request = ChangePasswordRequest(
+      passwordActual: _contrasenaActualController.text,
+      passwordNueva: _nuevaContrasenaController.text,
+      passwordNuevaConfirmacion: _confirmarContrasenaController.text,
+    );
+
+    try {
+      final profileService = ref.read(profileServiceProvider);
+      final response = await profileService.changePassword(request);
+
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      final message = response['message'] is String
+          ? response['message'] as String
+          : 'Tu contraseña se actualizó correctamente.';
       showAppAlertBanner(
         context,
         type: AppAlertType.success,
         title: 'Contraseña actualizada',
-        message: 'La contraseña se ha actualizado correctamente.',
+        message: message,
         onDismissed: () => Navigator.of(context).pop(),
+      );
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      if (e.code == '401') {
+        showAppAlertBanner(
+          context,
+          type: AppAlertType.info,
+          title: 'Sesión expirada',
+          message: e.message,
+          onDismissed: () => Navigator.of(context).pop(),
+        );
+      } else {
+        showAppAlertBanner(
+          context,
+          type: AppAlertType.error,
+          title: 'Error',
+          message: e.message,
+        );
+      }
+    } on NetworkException catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      showAppAlertBanner(
+        context,
+        type: AppAlertType.error,
+        title: 'Error',
+        message: e.message,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      showAppAlertBanner(
+        context,
+        type: AppAlertType.error,
+        title: 'Error',
+        message: 'No se pudo actualizar la contraseña. Intenta de nuevo.',
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: ProfileColors.background(context),
-      appBar: AppBar(
+    return LoadingOverlay(
+      isLoading: _isLoading,
+      child: Scaffold(
+        backgroundColor: ProfileColors.background(context),
+        appBar: AppBar(
         backgroundColor: ProfileColors.background(context),
         elevation: 0,
         leading: IconButton(
@@ -153,6 +226,7 @@ class _CambiarContrasenaPageState extends State<CambiarContrasenaPage> {
           ),
         ),
       ),
+    ),
     );
   }
 

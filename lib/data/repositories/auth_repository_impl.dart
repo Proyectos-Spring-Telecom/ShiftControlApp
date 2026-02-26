@@ -3,7 +3,6 @@ import '../../domain/entities/user_entity.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../datasources/local/auth_local_datasource.dart';
 import '../datasources/remote/auth_remote_datasource.dart';
-import '../models/user_model.dart';
 
 /// Implementación del repositorio de autenticación.
 class AuthRepositoryImpl implements AuthRepository {
@@ -15,10 +14,9 @@ class AuthRepositoryImpl implements AuthRepository {
   @override
   Future<UserEntity?> login(String email, String password) async {
     try {
-      final user = await _remote.login(email, password);
-      const token = 'mock-token';
-      await _local.saveSession(UserModel.fromEntity(user), token);
-      return user;
+      final result = await _remote.login(email, password);
+      await _local.saveSession(result.user, result.token);
+      return result.user;
     } on AppException {
       rethrow;
     }
@@ -37,5 +35,23 @@ class AuthRepositoryImpl implements AuthRepository {
   @override
   Future<bool> isLoggedIn() async {
     return _local.hasSession();
+  }
+
+  @override
+  Future<void> recuperarAcceso(String userName) async {
+    await _remote.recuperarAcceso(userName: userName);
+  }
+
+  @override
+  Future<void> cambiarContrasenaDesdeRecuperacion({
+    required String token,
+    required String passwordNueva,
+    required String passwordConfirmacion,
+  }) async {
+    await _remote.cambiarContrasenaDesdeRecuperacion(
+      token: token,
+      passwordNueva: passwordNueva,
+      passwordConfirmacion: passwordConfirmacion,
+    );
   }
 }

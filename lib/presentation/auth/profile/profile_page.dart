@@ -36,10 +36,12 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     super.didChangeDependencies();
     final user = ref.read(authControllerProvider).user;
     if (user != null && _nombreController.text.isEmpty) {
-      final parts = user.name.trim().split(RegExp(r'\s+'));
-      _nombreController.text = parts.isNotEmpty ? parts.first : '';
-      _apellidoController.text = parts.length > 1 ? parts.sublist(1).join(' ') : '';
-      _emailController.text = user.email;
+      _nombreController.text = user.name;
+      _apellidoController.text = [user.apellidoPaterno, user.apellidoMaterno]
+          .where((s) => s != null && s.isNotEmpty)
+          .join(' ');
+      _telefonoController.text = user.telefono ?? '';
+      _emailController.text = user.userName ?? user.email;
     }
   }
 
@@ -56,7 +58,19 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
   Widget build(BuildContext context) {
     final authState = ref.watch(authControllerProvider);
     final user = authState.user;
-    final displayName = user?.name ?? 'Usuario';
+    final displayName = [
+      user?.name,
+      user?.apellidoPaterno,
+      user?.apellidoMaterno,
+    ].whereType<String>().where((s) => s.isNotEmpty).join(' ');
+    final name = user?.name;
+    final email = user?.email;
+    final fallbackInitial = (name != null && name.isNotEmpty)
+        ? name.substring(0, 1).toUpperCase()
+        : (email != null && email.isNotEmpty
+            ? email.substring(0, 1).toUpperCase()
+            : '?');
+    final fotoPerfilUrl = user?.fotoPerfil;
 
     return LoadingOverlay(
       isLoading: authState.status == AuthStatus.loading,
@@ -70,25 +84,38 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                 CircleAvatar(
                   radius: 56,
                   backgroundColor: ProfileColors.cardBackground(context),
-                  child: Text(
-                    displayName.isNotEmpty
-                        ? displayName.substring(0, 1).toUpperCase()
-                        : '?',
-                    style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                          color: ProfileColors.textPrimary(context),
-                          fontWeight: FontWeight.bold,
-                        ),
-                  ),
+                  backgroundImage: (fotoPerfilUrl != null && fotoPerfilUrl.isNotEmpty)
+                      ? NetworkImage(fotoPerfilUrl)
+                      : null,
+                  child: (fotoPerfilUrl == null || fotoPerfilUrl.isEmpty)
+                      ? Text(
+                          fallbackInitial,
+                          style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                                color: ProfileColors.textPrimary(context),
+                                fontWeight: FontWeight.bold,
+                              ),
+                        )
+                      : null,
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  displayName,
+                  displayName.isNotEmpty ? displayName : (user?.name ?? 'Usuario'),
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                         color: ProfileColors.textPrimary(context),
                         fontWeight: FontWeight.bold,
                       ),
                   textAlign: TextAlign.center,
                 ),
+                if (user?.roleName != null && user!.roleName!.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    user.roleName!,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: ProfileColors.textSecondary(context),
+                          fontWeight: FontWeight.w600,
+                        ),
+                  ),
+                ],
                 const SizedBox(height: 8),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
@@ -252,6 +279,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       ),
       child: TextField(
         controller: controller,
+        readOnly: true,
         keyboardType: keyboardType,
         style: TextStyle(color: ProfileColors.textPrimary(context), fontSize: 16),
         decoration: InputDecoration(

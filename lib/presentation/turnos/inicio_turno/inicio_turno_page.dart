@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -29,13 +29,14 @@ class InicioTurnoPage extends ConsumerStatefulWidget {
 
 class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
   String? _vehiculoSeleccionado;
-  File? _fotoResguardo;
+  Uint8List? _fotoResguardo;
   final ImagePicker _picker = ImagePicker();
 
   Future<void> _tomarFotoResguardo() async {
     final XFile? photo = await _picker.pickImage(source: ImageSource.camera);
     if (photo != null && mounted) {
-      setState(() => _fotoResguardo = File(photo.path));
+      final bytes = await photo.readAsBytes();
+      if (mounted) setState(() => _fotoResguardo = bytes);
     }
   }
 
@@ -255,7 +256,7 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
               child: InkWell(
                 onTap: _tomarFotoResguardo,
                 child: _fotoResguardo != null
-                    ? Image.file(
+                    ? Image.memory(
                         _fotoResguardo!,
                         width: double.infinity,
                         height: double.infinity,

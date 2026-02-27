@@ -1,8 +1,10 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../../../core/utils/read_file_bytes_stub.dart'
+    if (dart.library.io) '../../../../core/utils/read_file_bytes_io.dart' as file_reader;
 import '../../captura_odometro/dashed_border_box.dart';
 import '../models/damage_point_model.dart';
 import '../registro_danos_colors.dart';
@@ -33,7 +35,8 @@ class _DamageDetailSheetState extends State<DamageDetailSheet> {
   late TextEditingController _parteAfectadaController;
   DamageType _selectedType = DamageType.abolladura;
   DamageSeverity _selectedSeverity = DamageSeverity.media;
-  File? _photo;
+  Uint8List? _photoBytes;
+  String? _photoPathForSave;
 
   @override
   void initState() {
@@ -44,8 +47,13 @@ class _DamageDetailSheetState extends State<DamageDetailSheet> {
     if (widget.point.damageDetail != null) {
       _selectedType = widget.point.damageDetail!.damageType;
       _selectedSeverity = widget.point.damageDetail!.severity;
-      if (widget.point.damageDetail!.photoPath != null) {
-        _photo = File(widget.point.damageDetail!.photoPath!);
+      final path = widget.point.damageDetail!.photoPath;
+      if (path != null) {
+        _photoPathForSave = path;
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
+          final bytes = await file_reader.readFileBytes(path);
+          if (mounted && bytes != null) setState(() => _photoBytes = bytes);
+        });
       }
     }
   }
@@ -63,7 +71,13 @@ class _DamageDetailSheetState extends State<DamageDetailSheet> {
   Future<void> _takePhoto() async {
     final XFile? photo = await _picker.pickImage(source: ImageSource.camera);
     if (photo != null && mounted) {
-      setState(() => _photo = File(photo.path));
+      final bytes = await photo.readAsBytes();
+      if (mounted) {
+        setState(() {
+          _photoBytes = bytes;
+          _photoPathForSave = photo.path;
+        });
+      }
     }
   }
 
@@ -72,7 +86,7 @@ class _DamageDetailSheetState extends State<DamageDetailSheet> {
       affectedPart: _parteAfectadaController.text,
       damageType: _selectedType,
       severity: _selectedSeverity,
-      photoPath: _photo?.path,
+      photoPath: _photoPathForSave,
     );
     widget.onSave(detail);
     Navigator.of(context).pop();
@@ -277,11 +291,11 @@ class _DamageDetailSheetState extends State<DamageDetailSheet> {
       children: [
         GestureDetector(
           onTap: _takePhoto,
-          child: _photo != null
+          child: _photoBytes != null
               ? ClipRRect(
                   borderRadius: BorderRadius.circular(12),
-                  child: Image.file(
-                    _photo!,
+                  child: Image.memory(
+                    _photoBytes!,
                     height: 100,
                     width: double.infinity,
                     fit: BoxFit.cover,

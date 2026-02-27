@@ -70,6 +70,7 @@ class TurnosSpringApp extends ConsumerWidget {
 
     return MaterialApp(
       title: 'Turnos Spring',
+      debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
       themeMode: themePreference.mode,

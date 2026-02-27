@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -19,7 +19,7 @@ class _ReporteIncidentePageState extends State<ReporteIncidentePage> {
   final ImagePicker _picker = ImagePicker();
   final TextEditingController _descripcionController = TextEditingController();
   TipoIncidente _tipoSeleccionado = TipoIncidente.accidente;
-  final List<File> _fotos = [];
+  final List<Uint8List> _fotos = [];
 
   @override
   void dispose() {
@@ -31,7 +31,8 @@ class _ReporteIncidentePageState extends State<ReporteIncidentePage> {
     if (_fotos.length >= 3) return;
     final XFile? photo = await _picker.pickImage(source: ImageSource.camera);
     if (photo != null && mounted) {
-      setState(() => _fotos.add(File(photo.path)));
+      final bytes = await photo.readAsBytes();
+      if (mounted) setState(() => _fotos.add(bytes));
     }
   }
 
@@ -335,7 +336,7 @@ class _ReporteIncidentePageState extends State<ReporteIncidentePage> {
       children: [
         ClipRRect(
           borderRadius: BorderRadius.circular(12),
-          child: Image.file(
+          child: Image.memory(
             _fotos[index],
             height: 100,
             width: double.infinity,

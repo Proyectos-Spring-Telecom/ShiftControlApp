@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -15,20 +15,22 @@ class RegistroCombustiblePage extends StatefulWidget {
 
 class _RegistroCombustiblePageState extends State<RegistroCombustiblePage> {
   final ImagePicker _picker = ImagePicker();
-  File? _fotoBomba;
-  File? _fotoTablero;
+  Uint8List? _fotoBomba;
+  Uint8List? _fotoTablero;
 
   Future<void> _tomarFotoBomba() async {
     final XFile? photo = await _picker.pickImage(source: ImageSource.camera);
     if (photo != null && mounted) {
-      setState(() => _fotoBomba = File(photo.path));
+      final bytes = await photo.readAsBytes();
+      if (mounted) setState(() => _fotoBomba = bytes);
     }
   }
 
   Future<void> _tomarFotoTablero() async {
     final XFile? photo = await _picker.pickImage(source: ImageSource.camera);
     if (photo != null && mounted) {
-      setState(() => _fotoTablero = File(photo.path));
+      final bytes = await photo.readAsBytes();
+      if (mounted) setState(() => _fotoTablero = bytes);
     }
   }
 
@@ -118,8 +120,8 @@ class _RegistroCombustiblePageState extends State<RegistroCombustiblePage> {
 
   Widget _buildEvidenciaCarga(
     BuildContext context,
-    File? fotoBomba,
-    File? fotoTablero,
+    Uint8List? fotoBomba,
+    Uint8List? fotoTablero,
     VoidCallback onTapBomba,
     VoidCallback onTapTablero,
   ) {
@@ -374,7 +376,7 @@ class _FotoCard extends StatelessWidget {
 
   final IconData icon;
   final String label;
-  final File? image;
+  final Uint8List? image;
   final VoidCallback onTap;
 
   @override
@@ -386,7 +388,7 @@ class _FotoCard extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           child: image != null
-              ? Image.file(
+              ? Image.memory(
                   image!,
                   width: double.infinity,
                   height: double.infinity,

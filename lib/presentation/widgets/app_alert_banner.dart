@@ -164,7 +164,7 @@ void showAppAlertBanner(
 
   entry = OverlayEntry(
     builder: (overlayContext) => Positioned(
-      top: MediaQuery.of(context).padding.top + 8,
+      top: MediaQuery.of(overlayContext).padding.top + 8,
       left: 0,
       right: 0,
       child: AppAlertBanner(

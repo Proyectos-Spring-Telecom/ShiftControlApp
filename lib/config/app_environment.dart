@@ -18,7 +18,7 @@ abstract final class AppEnvironmentConfig {
   /// DEV y PROD: http://springtelecom.mx:3003 (login = .../api/login, sin segmento "dev").
   /// QA:  http://springtelecom.mx:3003/qa
   static String get baseUrl {
-    const base = 'http://springtelecom.mx:3003';
+    const base = 'https://springtelecom.mx/shiftControlAPI/';
     switch (current) {
       case AppEnvironment.dev:
       case AppEnvironment.prod:

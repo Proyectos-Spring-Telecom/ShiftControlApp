@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -24,12 +24,13 @@ class CapturaOdometroPage extends StatefulWidget {
 
 class _CapturaOdometroPageState extends State<CapturaOdometroPage> {
   final ImagePicker _picker = ImagePicker();
-  File? _fotoTablero;
+  Uint8List? _fotoTablero;
 
   Future<void> _tomarFotoTablero() async {
     final XFile? photo = await _picker.pickImage(source: ImageSource.camera);
     if (photo != null && mounted) {
-      setState(() => _fotoTablero = File(photo.path));
+      final bytes = await photo.readAsBytes();
+      if (mounted) setState(() => _fotoTablero = bytes);
     }
   }
 
@@ -231,7 +232,7 @@ class _CapturaOdometroPageState extends State<CapturaOdometroPage> {
     );
   }
 
-  Widget _buildFotoTablero(BuildContext context, File? foto, VoidCallback onTap) {
+  Widget _buildFotoTablero(BuildContext context, Uint8List? foto, VoidCallback onTap) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
@@ -257,7 +258,7 @@ class _CapturaOdometroPageState extends State<CapturaOdometroPage> {
               child: InkWell(
                 onTap: onTap,
                 child: foto != null
-                    ? Image.file(
+                    ? Image.memory(
                         foto,
                         width: double.infinity,
                         height: double.infinity,

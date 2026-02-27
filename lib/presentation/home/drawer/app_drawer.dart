@@ -24,6 +24,14 @@ class AppDrawer extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(authControllerProvider).user;
+    final name = user?.name;
+    final email = user?.email;
+    final fotoPerfilUrl = user?.fotoPerfil;
+    final fallbackInitial = (name != null && name.isNotEmpty)
+        ? name.substring(0, 1).toUpperCase()
+        : (email != null && email.isNotEmpty
+            ? email.substring(0, 1).toUpperCase()
+            : '?');
 
     return Drawer(
       child: ListView(
@@ -40,14 +48,17 @@ class AppDrawer extends ConsumerWidget {
                 CircleAvatar(
                   radius: 32,
                   backgroundColor: Theme.of(context).colorScheme.primary,
-                  child: Text(
-                    user?.name.isNotEmpty == true
-                        ? user!.name.substring(0, 1).toUpperCase()
-                        : '?',
-                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.onPrimary,
-                        ),
-                  ),
+                  backgroundImage: (fotoPerfilUrl != null && fotoPerfilUrl.isNotEmpty)
+                      ? NetworkImage(fotoPerfilUrl)
+                      : null,
+                  child: (fotoPerfilUrl == null || fotoPerfilUrl.isEmpty)
+                      ? Text(
+                          fallbackInitial,
+                          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                                color: Theme.of(context).colorScheme.onPrimary,
+                              ),
+                        )
+                      : null,
                 ),
                 const SizedBox(height: 12),
                 Text(

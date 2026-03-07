@@ -30,4 +30,16 @@ class LoginColors {
       Theme.of(context).brightness == Brightness.dark
           ? const Color(0xFF8B8B9E)
           : const Color(0xFFCCCCDD);
+
+  /// Fondo del botón "Iniciar Sesión" (outline): blanco en tema claro, transparente en oscuro.
+  static Color buttonOutlineBackground(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+          ? Colors.transparent
+          : Colors.white;
+
+  /// Texto y borde del botón "Iniciar Sesión" (outline): blanco en oscuro, azul en claro.
+  static Color buttonOutlineForeground(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+          ? Colors.white
+          : button;
 }

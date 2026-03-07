@@ -92,7 +92,7 @@ class _EscanearVehiculoPageState extends State<EscanearVehiculoPage> {
           children: [
             const SizedBox(height: 8),
             Text(
-              'Escanea el Código QR',
+              'Escanea la placa del vehículo',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                     color: EscanearVehiculoColors.textPrimary(context),
                     fontWeight: FontWeight.bold,
@@ -100,7 +100,7 @@ class _EscanearVehiculoPageState extends State<EscanearVehiculoPage> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Coloca el código del vehículo dentro del marco.',
+              'Coloca la placa del vehículo dentro del marco.',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: EscanearVehiculoColors.textSecondary(context),
                   ),
@@ -112,7 +112,7 @@ class _EscanearVehiculoPageState extends State<EscanearVehiculoPage> {
             ),
             const SizedBox(height: 24),
             Text(
-              'Alinea el código dentro del cuadro para\nidentificar la unidad automáticamente',
+              'Alinea la placa dentro del cuadro para\nidentificar la unidad automáticamente',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: EscanearVehiculoColors.textSecondary(context),
                   ),

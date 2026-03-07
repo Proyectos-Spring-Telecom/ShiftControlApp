@@ -32,12 +32,14 @@ dependencies:
     sdk: flutter
   cupertino_icons: ^1.0.8
   flutter_riverpod: ^2.6.1
+  camera: ^0.11.0+2
   image_picker: ^1.1.2
   shared_preferences: ^2.3.3
   gradient_slide_to_act: ^0.0.2
   mobile_scanner: ^7.2.0
   quickalert: ^1.1.0
   http: ^1.2.0
+  http_parser: ^4.0.0
 
 dev_dependencies:
   flutter_test:

@@ -10,6 +10,7 @@ import 'inicio_turno_colors.dart';
 import '../captura_odometro/captura_odometro_page.dart';
 import '../captura_odometro/dashed_border_box.dart';
 import '../escanear_vehiculo/escanear_vehiculo_page.dart';
+import '../identificar_placa/identificar_placa_page.dart';
 
 class InicioTurnoPage extends ConsumerStatefulWidget {
   const InicioTurnoPage({
@@ -54,6 +55,24 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
             onIngresarManualmente: () {
               Navigator.of(context).pop();
             },
+          ),
+        ),
+      );
+    }
+  }
+
+  void _abrirIdentificarPlaca() {
+    if (widget.onEscanearVehiculoTap != null) {
+      widget.onEscanearVehiculoTap!();
+    } else {
+      Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => IdentificarPlacaPage(
+            onPlacaIdentificada: (vehiculoId) {
+              setState(() => _vehiculoSeleccionado = vehiculoId);
+              Navigator.of(context).pop();
+            },
+            onRegresar: () => Navigator.of(context).pop(),
           ),
         ),
       );
@@ -317,7 +336,7 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
           const SizedBox(height: 8),
           _VehiculoSelector(
             vehiculoSeleccionado: _vehiculoSeleccionado,
-            onTap: _abrirEscanerVehiculo,
+            onTap: _abrirIdentificarPlaca,
           ),
           const SizedBox(height: 20),
           _SelectorLabel(icon: Icons.person_outline, label: 'Operador'),
@@ -447,7 +466,7 @@ class _VehiculoSelector extends StatelessWidget {
         child: Row(
           children: [
             Icon(
-              Icons.qr_code_scanner,
+              Icons.camera_alt_outlined,
               color: vehiculoSeleccionado != null
                   ? InicioTurnoColors.accent
                   : InicioTurnoColors.placeholder(context),
@@ -456,7 +475,7 @@ class _VehiculoSelector extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                vehiculoSeleccionado ?? 'Escanear código QR del vehículo',
+                vehiculoSeleccionado ?? 'Tomar foto de la placa del vehículo',
                 style: TextStyle(
                   color: vehiculoSeleccionado != null
                       ? InicioTurnoColors.textPrimary(context)

@@ -7,6 +7,7 @@ import '../../widgets/app_alert_banner.dart';
 import '../../widgets/loading_overlay.dart';
 import '../../../core/constants/route_constants.dart';
 import '../../../core/utils/validators.dart';
+import '../face_auth/face_auth_flow_page.dart';
 import 'login_colors.dart';
 import 'recuperar_contrasena_page.dart';
 
@@ -110,6 +111,14 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     }
   }
 
+  void _onFaceAuthTap() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const FaceAuthFlowPage(),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authControllerProvider);
@@ -142,7 +151,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                         Align(
                           alignment: Alignment.centerLeft,
                           child: Text(
-                            'Iniciar Sesión',
+                            'Hola, inicia sesión',
                             style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                                   color: LoginColors.textPrimary(context),
                                   fontWeight: FontWeight.bold,
@@ -228,10 +237,32 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                           width: double.infinity,
                           height: 52,
                           child: ElevatedButton(
-                            onPressed: _submit,
+                            onPressed: _onFaceAuthTap,
                             style: ElevatedButton.styleFrom(
                               backgroundColor: LoginColors.button,
                               foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: const Text('Iniciar con FaceAuth'),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 52,
+                          child: ElevatedButton(
+                            onPressed: _submit,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: LoginColors.buttonOutlineBackground(context),
+                              foregroundColor: LoginColors.buttonOutlineForeground(context),
+                              surfaceTintColor: Colors.transparent,
+                              elevation: 0,
+                              side: BorderSide(
+                                color: LoginColors.buttonOutlineForeground(context),
+                                width: 1,
+                              ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),

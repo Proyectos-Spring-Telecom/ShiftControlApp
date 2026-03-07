@@ -9,6 +9,7 @@ import '../../core/network/api_client.dart';
 import '../../core/network/http_api_client.dart';
 import '../../data/datasources/local/auth_local_datasource.dart';
 import '../../data/datasources/remote/auth_remote_datasource.dart';
+import '../../data/datasources/remote/face_auth_remote_datasource.dart';
 import '../../data/repositories/auth_repository_impl.dart';
 import '../../domain/entities/user_entity.dart';
 import '../../domain/repositories/auth_repository.dart';
@@ -17,6 +18,7 @@ import '../../domain/usecases/get_current_user_usecase.dart';
 import '../../domain/usecases/login_usecase.dart';
 import '../../domain/usecases/logout_usecase.dart';
 import '../../features/auth/services/auth_service.dart';
+import '../../features/auth/services/face_auth_service.dart';
 import '../../features/profile/services/profile_service.dart';
 import '../widgets/app_alert_banner.dart';
 
@@ -57,6 +59,14 @@ final authRepositoryProvider = Provider<AuthRepository>((ref) {
     ref.watch(authRemoteDatasourceProvider),
     ref.watch(authLocalDatasourceProvider),
   );
+});
+
+final faceAuthRemoteDatasourceProvider = Provider<FaceAuthRemoteDatasource>((ref) {
+  return FaceAuthRemoteDatasourceImpl();
+});
+
+final faceAuthServiceProvider = Provider<FaceAuthService>((ref) {
+  return FaceAuthService(ref.watch(faceAuthRemoteDatasourceProvider));
 });
 
 final loginUseCaseProvider = Provider<LoginUseCase>((ref) {
@@ -194,6 +204,11 @@ class AuthController extends StateNotifier<AuthState> {
     }
   }
 
+  /// Establece la sesión tras login exitoso por Face Auth (validateFace).
+  Future<void> setSessionFromFaceAuth(UserEntity user, String token) async {
+    await _authRepository.saveSession(user, token);
+    state = state.copyWith(status: AuthStatus.authenticated, user: user, errorMessage: null);
+  }
 
   Future<void> logout() async {
     state = state.copyWith(status: AuthStatus.loading);

@@ -62,6 +62,12 @@ class TurnosSpringApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.listen<int>(sessionExpiredTriggerProvider, (prev, next) {
+      if (next != null && next > 0) {
+        ref.read(authControllerProvider.notifier).logout();
+      }
+    });
+
     final authState = ref.watch(authControllerProvider);
     final themePreference = ref.watch(themeModePreferenceProvider);
 

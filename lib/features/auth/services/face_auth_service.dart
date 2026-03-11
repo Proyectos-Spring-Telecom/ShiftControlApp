@@ -5,17 +5,24 @@ import 'package:flutter/foundation.dart';
 import '../../../core/errors/app_exception.dart';
 import '../../../data/datasources/remote/face_auth_remote_datasource.dart';
 
-/// Resultado de los pasos 1 y 2 (login + me).
+/// Resultado de los pasos 1 y 2 (login + GET /auth/me). Usar en otros servicios API.
 class FaceAuthCredentialsResult {
   const FaceAuthCredentialsResult({
     required this.token,
     required this.idCliente,
+    this.idUsuario,
+    this.idSolucion,
     this.usuario,
+    this.isRoot,
+    this.rol,
   });
   final String token;
   final String idCliente;
-  /// Usuario/correo del /auth/me (para guardar en sesión).
+  final int? idUsuario;
+  final dynamic idSolucion;
   final String? usuario;
+  final bool? isRoot;
+  final String? rol;
 }
 
 /// Servicio que orquesta los 6 pasos del flujo Face Auth.
@@ -34,7 +41,11 @@ class FaceAuthService {
     return FaceAuthCredentialsResult(
       token: loginResult.accessToken,
       idCliente: meResult.idCliente,
+      idUsuario: meResult.idUsuario,
+      idSolucion: meResult.idSolucion,
       usuario: meResult.usuario,
+      isRoot: meResult.isRoot,
+      rol: meResult.rol,
     );
   }
 

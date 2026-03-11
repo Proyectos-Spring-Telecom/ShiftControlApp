@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../config/app_environment.dart';
+import '../../core/auth/refresh_token_runner.dart';
+import '../../core/auth/token_storage_service.dart';
 import '../../core/constants/route_constants.dart';
 import '../../core/errors/app_exception.dart';
 import '../../core/network/api_client.dart';
@@ -10,6 +13,8 @@ import '../../core/network/http_api_client.dart';
 import '../../data/datasources/local/auth_local_datasource.dart';
 import '../../data/datasources/remote/auth_remote_datasource.dart';
 import '../../data/datasources/remote/face_auth_remote_datasource.dart';
+import '../../data/datasources/remote/plate_read_remote_datasource.dart';
+import '../../data/datasources/remote/placas_validar_remote_datasource.dart';
 import '../../data/repositories/auth_repository_impl.dart';
 import '../../domain/entities/user_entity.dart';
 import '../../domain/repositories/auth_repository.dart';
@@ -29,14 +34,34 @@ final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
   );
 });
 
+final tokenStorageServiceProvider = Provider<TokenStorageService>((ref) {
+  final prefs = ref.watch(sharedPreferencesProvider);
+  return TokenStorageServiceImpl(prefs);
+});
+
+final refreshTokenRunnerProvider = Provider<RefreshTokenRunner>((ref) {
+  final tokenStorage = ref.watch(tokenStorageServiceProvider);
+  return RefreshTokenRunner(tokenStorage, AppEnvironmentConfig.baseUrl);
+});
+
+/// Al incrementarse, la app debe cerrar sesión (listener en TurnosSpringApp).
+final sessionExpiredTriggerProvider = StateProvider<int>((ref) => 0);
+
 final authLocalDatasourceProvider = Provider<AuthLocalDatasource>((ref) {
   final prefs = ref.watch(sharedPreferencesProvider);
-  return AuthLocalDatasourceImpl(prefs);
+  final tokenStorage = ref.watch(tokenStorageServiceProvider);
+  return AuthLocalDatasourceImpl(prefs, tokenStorage);
 });
 
 final apiClientProvider = Provider<ApiClient>((ref) {
-  final local = ref.watch(authLocalDatasourceProvider);
-  return HttpApiClient(getToken: () => local.getStoredToken());
+  final tokenStorage = ref.watch(tokenStorageServiceProvider);
+  final refreshRunner = ref.watch(refreshTokenRunnerProvider);
+  final triggerNotifier = ref.read(sessionExpiredTriggerProvider.notifier);
+  return HttpApiClient(
+    getToken: () => tokenStorage.getToken(),
+    refreshToken: () => refreshRunner.run(),
+    onSessionExpired: () => triggerNotifier.state++,
+  );
 });
 
 final authRemoteDatasourceProvider = Provider<AuthRemoteDatasource>((ref) {
@@ -67,6 +92,14 @@ final faceAuthRemoteDatasourceProvider = Provider<FaceAuthRemoteDatasource>((ref
 
 final faceAuthServiceProvider = Provider<FaceAuthService>((ref) {
   return FaceAuthService(ref.watch(faceAuthRemoteDatasourceProvider));
+});
+
+final plateReadRemoteDatasourceProvider = Provider<PlateReadRemoteDatasource>((ref) {
+  return PlateReadRemoteDatasourceImpl();
+});
+
+final placasValidarRemoteDatasourceProvider = Provider<PlacasValidarRemoteDatasource>((ref) {
+  return PlacasValidarRemoteDatasourceImpl();
 });
 
 final loginUseCaseProvider = Provider<LoginUseCase>((ref) {

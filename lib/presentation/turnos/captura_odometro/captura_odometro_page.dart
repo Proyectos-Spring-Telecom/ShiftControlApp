@@ -1,9 +1,12 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../models/checklist_type.dart';
+import '../../../data/datasources/remote/placas_validar_remote_datasource.dart';
+import '../placa_validada_provider.dart';
 import 'captura_odometro_colors.dart';
 import 'dashed_border_box.dart';
 import '../registro_combustible/registro_combustible_page.dart';
@@ -13,10 +16,21 @@ class CapturaOdometroPage extends StatefulWidget {
     super.key,
     this.onSiguienteTap,
     this.checklistType = ChecklistType.apertura,
+    this.placa,
+    this.marca,
+    this.modelo,
+    this.anio,
+    this.economico,
   });
 
   final VoidCallback? onSiguienteTap;
   final ChecklistType checklistType;
+  /// Datos del vehículo (opcional). Si no se pasan, se usan los de [placaValidadaProvider].
+  final String? placa;
+  final String? marca;
+  final String? modelo;
+  final int? anio;
+  final String? economico;
 
   @override
   State<CapturaOdometroPage> createState() => _CapturaOdometroPageState();
@@ -70,7 +84,12 @@ class _CapturaOdometroPageState extends State<CapturaOdometroPage> {
                 children: [
                   _buildProgress(context),
                   const SizedBox(height: 20),
-                  _buildVehicleCard(context),
+                  Consumer(
+                    builder: (context, ref, _) {
+                      final r = ref.watch(placaValidadaProvider);
+                      return _buildVehicleCard(context, r);
+                    },
+                  ),
                   const SizedBox(height: 24),
                   _buildFotoTablero(context, _fotoTablero, _tomarFotoTablero),
                   const SizedBox(height: 24),
@@ -121,7 +140,14 @@ class _CapturaOdometroPageState extends State<CapturaOdometroPage> {
     );
   }
 
-  Widget _buildVehicleCard(BuildContext context) {
+  Widget _buildVehicleCard(BuildContext context, PlacasValidarResult? r) {
+    final hasProvider = r != null && r.registered;
+    final placa = hasProvider ? (r.placa ?? '—') : (widget.placa ?? 'XJA-99-23');
+    final marcaModelo = hasProvider ? _marcaModeloFromResult(r) : _marcaModeloFromWidget;
+    final anio = hasProvider ? (r.anio?.toString() ?? '—') : (widget.anio?.toString() ?? '—');
+    final economicoStr = hasProvider ? r.economico : widget.economico;
+    final economico = economicoStr != null && economicoStr.isNotEmpty ? '#$economicoStr' : 'OP-2024-892';
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
@@ -129,36 +155,49 @@ class _CapturaOdometroPageState extends State<CapturaOdometroPage> {
         color: CapturaOdometroColors.cardBackground(context),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildT804Pill(context),
-                const SizedBox(height: 8),
-                Text(
-                  'Nissan Versa 2022',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: CapturaOdometroColors.textPrimary(context),
-                        fontWeight: FontWeight.bold,
-                      ),
-                ),
-              ],
-            ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Folio Operativo',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: CapturaOdometroColors.textSecondary(context),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildT804Pill(context, 'Placa: $placa'),
+                    const SizedBox(height: 4),
+                    Text(
+                      marcaModelo,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: CapturaOdometroColors.textPrimary(context),
+                            fontWeight: FontWeight.w500,
+                          ),
                     ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 6),
-              _buildPill(context, 'OP-2024-892', CapturaOdometroColors.pillDarkGray(context)),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    'Económico: $economico',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: CapturaOdometroColors.textPrimary(context),
+                          fontWeight: FontWeight.w500,
+                        ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Año: $anio',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: CapturaOdometroColors.textPrimary(context),
+                          fontWeight: FontWeight.w500,
+                        ),
+                  ),
+                ],
+              ),
             ],
           ),
         ],
@@ -166,15 +205,33 @@ class _CapturaOdometroPageState extends State<CapturaOdometroPage> {
     );
   }
 
-  Widget _buildT804Pill(BuildContext context) {
+  String get _marcaModeloFromWidget {
+    final m = widget.marca ?? '';
+    final mod = widget.modelo ?? '';
+    if (m.isEmpty && mod.isEmpty) return 'Nissan Versa 2022';
+    if (m.isEmpty) return mod;
+    if (mod.isEmpty) return m;
+    return '$m $mod';
+  }
+
+  static String _marcaModeloFromResult(PlacasValidarResult r) {
+    final m = r.marca ?? '';
+    final mod = r.modelo ?? '';
+    if (m.isEmpty && mod.isEmpty) return 'Nissan Versa 2022';
+    if (m.isEmpty) return mod;
+    if (mod.isEmpty) return m;
+    return '$m $mod';
+  }
+
+  Widget _buildT804Pill(BuildContext context, String placa) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
+      padding: const EdgeInsets.only(left: 0, right: 14, top: 3, bottom: 3),
       decoration: BoxDecoration(
         color: CapturaOdometroColors.pillT804Background(context),
         borderRadius: BorderRadius.circular(7),
       ),
       child: Text(
-        'Placas: XJA-99-23',
+        placa,
         style: Theme.of(context).textTheme.titleSmall?.copyWith(
               color: CapturaOdometroColors.pillT804Text(context),
               fontWeight: FontWeight.w600,

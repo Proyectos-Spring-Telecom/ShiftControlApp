@@ -245,7 +245,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                                 borderRadius: BorderRadius.circular(12),
                               ),
                             ),
-                            child: const Text('Iniciar con FaceAuth'),
+                            child: const Text('Reconocimiento facial'),
                           ),
                         ),
                         const SizedBox(height: 12),

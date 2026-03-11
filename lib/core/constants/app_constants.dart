@@ -5,6 +5,7 @@ abstract final class AppConstants {
   static const String appName = 'Turnos Spring';
 
   static const String keyAuthToken = 'auth_token';
+  static const String keyRefreshToken = 'refresh_token';
   static const String keyUserId = 'user_id';
   static const String keyUserEmail = 'user_email';
   static const String keyUserName = 'user_name';

@@ -3,8 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gradient_slide_to_act/gradient_slide_to_act.dart';
 import 'package:quickalert/quickalert.dart';
 
+import '../../../domain/entities/user_entity.dart';
+import '../../controllers/auth_controller.dart';
+import '../../../core/utils/date_format_utils.dart';
+import '../../../data/datasources/remote/placas_validar_remote_datasource.dart';
 import '../indicadores_testigo/indicadores_testigo_colors.dart';
 import '../models/checklist_type.dart';
+import '../placa_validada_provider.dart';
 import '../turno_status_provider.dart';
 import 'resumen_turno_colors.dart';
 
@@ -56,7 +61,7 @@ class _ResumenTurnoPageState extends ConsumerState<ResumenTurnoPage> {
                   const SizedBox(height: 24),
                   _buildSectionHeading(context, 'Información General'),
                   const SizedBox(height: 10),
-                  _buildInformacionGeneralCard(context),
+                  _buildInformacionGeneralCard(context, ref),
                   const SizedBox(height: 24),
                   _buildSectionHeading(context, 'Estado del Vehículo'),
                   const SizedBox(height: 10),
@@ -160,7 +165,22 @@ class _ResumenTurnoPageState extends ConsumerState<ResumenTurnoPage> {
     );
   }
 
-  Widget _buildInformacionGeneralCard(BuildContext context) {
+  Widget _buildInformacionGeneralCard(BuildContext context, WidgetRef ref) {
+    final placaResult = ref.watch(placaValidadaProvider);
+    final authState = ref.watch(authControllerProvider);
+    final user = authState.user;
+
+    final bool hasVehiculo = placaResult != null && placaResult.registered;
+    final String vehiculoTitle = hasVehiculo
+        ? _vehiculoTitle(placaResult!)
+        : 'Nissan Versa - 2023';
+    final String vehiculoSubtitle = hasVehiculo
+        ? 'Placa: ${placaResult!.placa ?? '—'}'
+        : 'Placas: A-123-BC';
+
+    final String operadorTitle = _operadorTitle(user);
+    const String operadorId = 'ID: OP-4592';
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
@@ -170,15 +190,34 @@ class _ResumenTurnoPageState extends ConsumerState<ResumenTurnoPage> {
       ),
       child: Column(
         children: [
-          _buildInfoRow(context, 'Vehículo', 'Nissan Versa - 2023', 'Placas: A-123-BC', Icons.directions_car_outlined),
+          _buildInfoRow(context, 'Vehículo', vehiculoTitle, vehiculoSubtitle, Icons.directions_car_outlined),
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 16),
             child: Divider(color: ResumenTurnoColors.textSecondary(context).withValues(alpha: 0.4), height: 1, thickness: 1),
           ),
-          _buildInfoRow(context, 'Operador', 'Juan Pérez García', 'ID: OP-4592', Icons.person_outline),
+          _buildInfoRow(context, 'Operador', operadorTitle, operadorId, Icons.person_outline),
         ],
       ),
     );
+  }
+
+  static String _vehiculoTitle(PlacasValidarResult r) {
+    final marca = r.marca ?? '';
+    final modelo = r.modelo ?? '';
+    final anio = r.anio?.toString() ?? '';
+    final parts = [marca, modelo].where((s) => s.isNotEmpty);
+    if (parts.isEmpty) return anio.isNotEmpty ? '— $anio' : '—';
+    final base = parts.join(' ');
+    return anio.isNotEmpty ? '$base - $anio' : base;
+  }
+
+  static String _operadorTitle(UserEntity? user) {
+    if (user == null) return 'Juan Pérez García';
+    final name = user.name;
+    final p = user.apellidoPaterno ?? '';
+    final m = user.apellidoMaterno ?? '';
+    final apellidos = [p, m].where((s) => s.isNotEmpty).join(' ');
+    return apellidos.isEmpty ? name : '$name $apellidos';
   }
 
   Widget _buildEstadoVehiculoCard(BuildContext context) {
@@ -314,7 +353,7 @@ class _ResumenTurnoPageState extends ConsumerState<ResumenTurnoPage> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Viernes, 02 Feb 2024',
+                  formatearSoloFechaActual(),
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         color: ResumenTurnoColors.textPrimary(context),
                         fontWeight: FontWeight.bold,
@@ -322,7 +361,7 @@ class _ResumenTurnoPageState extends ConsumerState<ResumenTurnoPage> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '07:45 AM',
+                  formatearSoloHora12Actual(),
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         color: ResumenTurnoColors.accentBlue,
                         fontWeight: FontWeight.bold,

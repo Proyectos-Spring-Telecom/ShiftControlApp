@@ -144,7 +144,7 @@ class _FaceAuthFlowPageState extends ConsumerState<FaceAuthFlowPage> {
         context,
         type: AppAlertType.success,
         title: 'Bienvenido',
-        message: 'Has iniciado sesión con Face Auth.',
+        message: 'Iniciaste sesión con reconocimiento facial.',
       );
       Navigator.of(context).pushReplacementNamed(RouteConstants.home);
     } on AuthException catch (e) {
@@ -152,14 +152,16 @@ class _FaceAuthFlowPageState extends ConsumerState<FaceAuthFlowPage> {
       if (e.code == '404') {
         setState(() => _validateFace404 = true);
       } else {
-        showAppAlertBanner(
-          context,
-          type: AppAlertType.error,
-          title: e.code == 'liveness_failed' ? 'Prueba de vida' : 'Rostro no reconocido',
-          message: e.message,
-        );
         if (e.code == 'liveness_failed') {
           setState(() => _livenessFailedReason = e.message);
+          // No mostrar banner: se muestra la pantalla completa "No pudimos verificar tu rostro".
+        } else {
+          showAppAlertBanner(
+            context,
+            type: AppAlertType.error,
+            title: 'Rostro no reconocido',
+            message: e.message,
+          );
         }
       }
     } on NetworkException catch (e) {
@@ -198,7 +200,7 @@ class _FaceAuthFlowPageState extends ConsumerState<FaceAuthFlowPage> {
                 const CircularProgressIndicator(),
                 const SizedBox(height: 24),
                 Text(
-                  'Prueba de vida',
+                  'Verificando tu identidad',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         color: FaceAuthColors.textPrimary(context),
                         fontWeight: FontWeight.bold,
@@ -206,7 +208,7 @@ class _FaceAuthFlowPageState extends ConsumerState<FaceAuthFlowPage> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Gire un poco a la derecha o izquierda entre las dos fotos.',
+                  'Estamos validando tu rostro para confirmar que eres tú. Esto tomará solo unos segundos.',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: FaceAuthColors.textSecondary(context),
                       ),
@@ -214,7 +216,7 @@ class _FaceAuthFlowPageState extends ConsumerState<FaceAuthFlowPage> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'Validando...',
+                  'Analizando....',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: FaceAuthColors.placeholder(context),
                       ),
@@ -297,10 +299,10 @@ class _FaceAuthFlowPageState extends ConsumerState<FaceAuthFlowPage> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.face_retouching_natural, size: 64, color: FaceAuthColors.textSecondary(context)),
+                  Icon(Icons.warning, size: 64, color: FaceAuthColors.textSecondary(context)),
                   const SizedBox(height: 24),
                   Text(
-                    'Prueba de vida no superada',
+                    'No pudimos verificar tu rostro',
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
                           color: FaceAuthColors.textPrimary(context),
                           fontWeight: FontWeight.bold,
@@ -309,16 +311,8 @@ class _FaceAuthFlowPageState extends ConsumerState<FaceAuthFlowPage> {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    _livenessFailedReason!,
+                    'Después de varios intentos no logramos validar tu rostro (posible foto o pantalla), mantén tu rostro centrado y evita cubrirlo con lentes oscuros, gorra u otros objetos.',
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          color: FaceAuthColors.textSecondary(context),
-                        ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Gire un poco a la derecha o izquierda entre la primera y la segunda foto, luego intente de nuevo.',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: FaceAuthColors.textSecondary(context),
                         ),
                     textAlign: TextAlign.center,

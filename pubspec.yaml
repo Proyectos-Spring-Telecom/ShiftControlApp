@@ -40,6 +40,8 @@ dependencies:
   quickalert: ^1.1.0
   http: ^1.2.0
   http_parser: ^4.0.0
+  image: ^4.1.7
+  path_provider: ^2.1.4
 
 dev_dependencies:
   flutter_test:

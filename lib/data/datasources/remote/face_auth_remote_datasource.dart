@@ -13,16 +13,22 @@ class FaceAuthLoginResult {
   final String accessToken;
 }
 
-/// Resultado de /auth/me (idCliente, etc.).
+/// Resultado de GET /auth/me (datos del usuario autenticado; usado en otros servicios API).
 class FaceAuthMeResult {
   const FaceAuthMeResult({
     required this.idCliente,
-    this.usuario,
+    this.idUsuario,
     this.idSolucion,
+    this.usuario,
+    this.isRoot,
+    this.rol,
   });
   final String idCliente;
-  final String? usuario;
+  final int? idUsuario;
   final dynamic idSolucion;
+  final String? usuario;
+  final bool? isRoot;
+  final String? rol;
 }
 
 /// Resultado de liveness-check.
@@ -127,18 +133,23 @@ class FaceAuthRemoteDatasourceImpl implements FaceAuthRemoteDatasource {
       },
     );
     debugPrint('[FaceAuth] Paso 2 - auth/me: status=${response.statusCode}');
-    debugPrint('[FaceAuth] auth/me response body: ${response.body}');
+    debugPrint('[FaceAuth] auth/me response: ${response.body}');
     _handleResponse(response);
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     final idCliente = data['idCliente']?.toString() ?? data['id']?.toString() ?? '';
     if (idCliente.isEmpty) {
       throw const AuthException('No se recibió idCliente.');
     }
-    debugPrint('[FaceAuth] auth/me: idCliente=$idCliente, usuario=${data['usuario']}');
+    final idUsuario = data['idUsuario'] is int ? data['idUsuario'] as int : null;
+    final isRoot = data['isRoot'] as bool?;
+    final rol = data['rol'] as String?;
     return FaceAuthMeResult(
       idCliente: idCliente,
-      usuario: data['usuario'] as String?,
+      idUsuario: idUsuario,
       idSolucion: data['idSolucion'],
+      usuario: data['usuario'] as String?,
+      isRoot: isRoot,
+      rol: rol,
     );
   }
 

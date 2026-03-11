@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../data/datasources/remote/placas_validar_remote_datasource.dart';
 import '../controllers/auth_controller.dart';
 import 'control_turnos_colors.dart';
 import 'inicio_turno/inicio_turno_page.dart';
 import 'models/checklist_type.dart';
+import 'placa_validada_provider.dart';
 import 'reporte_incidente/reporte_incidente_page.dart';
 import 'registro_combustible/registro_combustible_page.dart';
 import 'turno_status_provider.dart';
@@ -202,6 +204,11 @@ class _ControlTurnosPageState extends ConsumerState<ControlTurnosPage> {
   }
 
   Widget _buildEstadoActual(BuildContext context) {
+    final placaResult = ref.watch(placaValidadaProvider);
+    final hasVehiculo = placaResult != null && placaResult.registered;
+    final vehiculoTitle = hasVehiculo ? _vehiculoTitle(placaResult!) : 'Nissan Versa 2023';
+    final vehiculoPlaca = hasVehiculo ? (placaResult!.placa ?? '—') : 'XJA-99-23';
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -258,7 +265,7 @@ class _ControlTurnosPageState extends ConsumerState<ControlTurnosPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Nissan Versa 2023',
+                        vehiculoTitle,
                         style: Theme.of(context).textTheme.titleMedium?.copyWith(
                               color: ControlTurnosColors.textPrimary(context),
                               fontWeight: FontWeight.bold,
@@ -266,7 +273,7 @@ class _ControlTurnosPageState extends ConsumerState<ControlTurnosPage> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Placas: XJA-99-23',
+                        'Placa: $vehiculoPlaca',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                               color: ControlTurnosColors.textSecondary(context),
                             ),
@@ -299,6 +306,16 @@ class _ControlTurnosPageState extends ConsumerState<ControlTurnosPage> {
         ),
       ],
     );
+  }
+
+  static String _vehiculoTitle(PlacasValidarResult r) {
+    final marca = r.marca ?? '';
+    final modelo = r.modelo ?? '';
+    final anio = r.anio?.toString() ?? '';
+    final parts = [marca, modelo].where((s) => s.isNotEmpty);
+    if (parts.isEmpty) return anio.isNotEmpty ? '— $anio' : '—';
+    final base = parts.join(' ');
+    return anio.isNotEmpty ? '$base - $anio' : base;
   }
 
   Widget _buildHistorialReciente(BuildContext context) {

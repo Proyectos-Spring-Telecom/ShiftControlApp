@@ -45,7 +45,6 @@ class _FaceAuthCapturePageState extends State<FaceAuthCapturePage> {
   bool _isCapturing = false;
   int? _autoCaptureCountdown;
   bool _waitingForSecondCapture = false;
-  int? _secondCaptureCountdown;
   bool _capture1Success = false;
   bool _capture2Success = false;
   Uint8List? _firstCaptureBytes;
@@ -110,12 +109,18 @@ class _FaceAuthCapturePageState extends State<FaceAuthCapturePage> {
 
   Future<void> _startAutoCapture() async {
     final delay = widget.autoCaptureDelaySeconds;
-    for (var i = delay; i >= 1 && mounted; i--) {
-      setState(() => _autoCaptureCountdown = i);
-      await Future<void>.delayed(const Duration(seconds: 1));
+    if (widget.twoCaptures) {
+      // Sin cuenta regresiva: solo esperar [delay] segundos y capturar.
+      await Future<void>.delayed(Duration(seconds: delay));
+    } else {
+      for (var i = delay; i >= 1 && mounted; i--) {
+        setState(() => _autoCaptureCountdown = i);
+        await Future<void>.delayed(const Duration(seconds: 1));
+      }
+      if (!mounted) return;
+      setState(() => _autoCaptureCountdown = 0);
     }
     if (!mounted) return;
-    setState(() => _autoCaptureCountdown = 0);
     if (_cameraController == null || !_cameraController!.value.isInitialized) return;
     try {
       final XFile file = await _cameraController!.takePicture();
@@ -124,20 +129,13 @@ class _FaceAuthCapturePageState extends State<FaceAuthCapturePage> {
       if (widget.twoCaptures) {
         setState(() {
           _firstCaptureBytes = bytes;
-          _autoCaptureCountdown = null;
           _capture1Success = true;
           _waitingForSecondCapture = true;
-          _secondCaptureCountdown = 2;
         });
-        for (var i = 2; i >= 1 && mounted; i--) {
-          setState(() => _secondCaptureCountdown = i);
-          await Future<void>.delayed(const Duration(seconds: 1));
-        }
+        // Espera 2 s entre capturas sin mostrar cuenta regresiva.
+        await Future<void>.delayed(const Duration(seconds: 2));
         if (!mounted) return;
-        setState(() {
-          _waitingForSecondCapture = false;
-          _secondCaptureCountdown = null;
-        });
+        setState(() => _waitingForSecondCapture = false);
         final XFile file2 = await _cameraController!.takePicture();
         final bytes2 = await file2.readAsBytes();
         if (!mounted) return;
@@ -155,7 +153,6 @@ class _FaceAuthCapturePageState extends State<FaceAuthCapturePage> {
       if (mounted) setState(() {
         _autoCaptureCountdown = null;
         _waitingForSecondCapture = false;
-        _secondCaptureCountdown = null;
       });
     }
   }
@@ -199,11 +196,17 @@ class _FaceAuthCapturePageState extends State<FaceAuthCapturePage> {
   }
 
   String _statusMessage() {
-    if (widget.twoCaptures && _autoCaptureCountdown != null) {
-      return 'Mantenga la posición al frente.';
-    }
     if (widget.twoCaptures && _waitingForSecondCapture) {
       return 'Gira un poco el rostro a la derecha o izquierda.';
+    }
+    if (widget.twoCaptures && !_capture1Success) {
+      return 'Mantenga la posición al frente.';
+    }
+    if (widget.twoCaptures && _capture1Success) {
+      return widget.subtitle;
+    }
+    if (widget.autoCapture && _autoCaptureCountdown != null) {
+      return _autoCaptureCountdown! > 0 ? 'Capturando...' : widget.subtitle;
     }
     return widget.subtitle;
   }
@@ -256,35 +259,18 @@ class _FaceAuthCapturePageState extends State<FaceAuthCapturePage> {
                         child: Center(
                           child: Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 32),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  'Gira un poco el rostro a la derecha o izquierda.',
-                                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                  textAlign: TextAlign.center,
-                                ),
-                                if (_secondCaptureCountdown != null) ...[
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    _secondCaptureCountdown == 1
-                                        ? 'Segunda captura en 1 segundo…'
-                                        : 'Segunda captura en $_secondCaptureCountdown segundos…',
-                                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                          color: Colors.white70,
-                                        ),
-                                    textAlign: TextAlign.center,
+                            child: Text(
+                              'Gira un poco el rostro a la derecha o izquierda.',
+                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w600,
                                   ),
-                                ],
-                              ],
+                              textAlign: TextAlign.center,
                             ),
                           ),
                         ),
                       )
-                    else if (widget.autoCapture && _autoCaptureCountdown != null)
+                    else if (widget.autoCapture && !widget.twoCaptures && _autoCaptureCountdown != null)
                       Container(
                         color: Colors.black45,
                         child: Center(
@@ -478,7 +464,11 @@ class _FaceAuthCapturePageState extends State<FaceAuthCapturePage> {
 
   Widget _buildCameraWithOvalOverlay(BuildContext context) {
     final ovalSuccess = widget.twoCaptures && (_capture1Success || _capture2Success);
-    final frameColor = ovalSuccess ? _ovalSuccessGreen : FaceAuthColors.frameBorder(context);
+    final bool useGreenOval = widget.twoCaptures;
+    final frameColor = ovalSuccess
+        ? _ovalSuccessGreen
+        : (useGreenOval ? FaceAuthColors.ovalBorderGreen : FaceAuthColors.frameBorder(context));
+    final overColor = useGreenOval && !ovalSuccess ? FaceAuthColors.ovalBorderGreenOver : null;
     return LayoutBuilder(
       builder: (context, constraints) {
         return Stack(
@@ -502,6 +492,7 @@ class _FaceAuthCapturePageState extends State<FaceAuthCapturePage> {
               painter: _OvalFramePainter(
                 frameColor: frameColor,
                 backgroundColor: Colors.black54,
+                overColor: overColor,
               ),
             ),
           ],
@@ -555,12 +546,18 @@ class _FaceAuthCapturePageState extends State<FaceAuthCapturePage> {
   }
 }
 
-/// Marco óvalo: recorte exterior oscuro y borde elíptico azul.
+/// Marco óvalo: recorte exterior oscuro y borde (verde con efecto over o azul).
 class _OvalFramePainter extends CustomPainter {
-  _OvalFramePainter({required this.frameColor, required this.backgroundColor});
+  _OvalFramePainter({
+    required this.frameColor,
+    required this.backgroundColor,
+    this.overColor,
+  });
 
   final Color frameColor;
   final Color backgroundColor;
+  /// Si no es null, se dibuja un trazo exterior (efecto over/relieve) antes del borde principal.
+  final Color? overColor;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -580,6 +577,15 @@ class _OvalFramePainter extends CustomPainter {
       canvas.drawPath(scrim, Paint()..color = backgroundColor);
     }
 
+    if (overColor != null) {
+      canvas.drawOval(
+        rect,
+        Paint()
+          ..color = overColor!.withValues(alpha: 0.5)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 6,
+      );
+    }
     canvas.drawOval(
       rect,
       Paint()

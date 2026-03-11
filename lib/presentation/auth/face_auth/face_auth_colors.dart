@@ -38,4 +38,9 @@ class FaceAuthColors {
       Theme.of(context).brightness == Brightness.dark
           ? const Color(0xFF5A9FB8)
           : const Color(0xFF001C6A);
+
+  /// Óvalo verde: borde brillante (estilo reconocimiento facial).
+  static const Color ovalBorderGreen = Color(0xFF66BB6A);
+  /// Óvalo verde: efecto over / relieve (trazo exterior suave).
+  static const Color ovalBorderGreenOver = Color(0xFF4CAF50);
 }

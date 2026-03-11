@@ -60,7 +60,7 @@ class AuthService {
         fotoPerfil: response.fotoPerfil,
       );
 
-      await _local.saveSession(user, response.token);
+      await _local.saveSession(user, response.token, refreshToken: response.refreshToken);
       debugPrint('✅ Login con NIP exitoso');
       return user;
     } on AuthException catch (e) {

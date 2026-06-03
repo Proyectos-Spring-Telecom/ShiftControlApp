@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/route_constants.dart';
+import '../../../domain/entities/user_entity.dart';
 import '../../controllers/auth_controller.dart';
 import '../../turnos/control_turnos_colors.dart';
 import '../../widgets/loading_overlay.dart';
@@ -54,15 +55,23 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     super.dispose();
   }
 
+  /// Nombre completo para mostrar. Usa [name] si viene lleno (evita repetir apellidos); si no, arma apellidos o fallback.
+  static String _displayName(UserEntity? user) {
+    if (user == null) return 'Usuario';
+    if (user.name.trim().isNotEmpty) return user.name.trim();
+    final parts = [user.apellidoPaterno, user.apellidoMaterno]
+        .where((s) => s != null && s.trim().isNotEmpty)
+        .cast<String>()
+        .toList();
+    if (parts.isNotEmpty) return parts.join(' ');
+    return user.email.trim().isNotEmpty ? user.email : 'Usuario';
+  }
+
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authControllerProvider);
     final user = authState.user;
-    final displayName = [
-      user?.name,
-      user?.apellidoPaterno,
-      user?.apellidoMaterno,
-    ].whereType<String>().where((s) => s.isNotEmpty).join(' ');
+    final displayName = _displayName(user);
     final name = user?.name;
     final email = user?.email;
     final fallbackInitial = (name != null && name.isNotEmpty)
@@ -99,7 +108,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  displayName.isNotEmpty ? displayName : (user?.name ?? 'Usuario'),
+                  displayName,
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                         color: ProfileColors.textPrimary(context),
                         fontWeight: FontWeight.bold,

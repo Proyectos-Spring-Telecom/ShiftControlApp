@@ -6,6 +6,7 @@ import 'rol_model.dart';
 class LoginResponseModel {
   const LoginResponseModel({
     required this.token,
+    this.refreshToken,
     this.rol,
     this.permisos = const [],
     this.id,
@@ -19,6 +20,7 @@ class LoginResponseModel {
   });
 
   final String token;
+  final String? refreshToken;
   final RolModel? rol;
   final List<PermisoModel> permisos;
   final String? id;
@@ -62,6 +64,7 @@ class LoginResponseModel {
 
     return LoginResponseModel(
       token: (json['token'] as String?) ?? '',
+      refreshToken: json['refreshToken'] as String?,
       rol: rol,
       permisos: permisos,
       id: id,

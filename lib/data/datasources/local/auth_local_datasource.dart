@@ -1,11 +1,13 @@
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../../../core/auth/token_storage_service.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/errors/app_exception.dart';
 import '../../models/user_model.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 /// Fuente de datos local para sesión de autenticación.
 abstract interface class AuthLocalDatasource {
-  Future<void> saveSession(UserModel user, String token);
+  Future<void> saveSession(UserModel user, String token, {String? refreshToken});
   Future<void> clearSession();
   Future<UserModel?> getStoredUser();
   Future<String?> getStoredToken();
@@ -16,14 +18,18 @@ abstract interface class AuthLocalDatasource {
 }
 
 class AuthLocalDatasourceImpl implements AuthLocalDatasource {
-  AuthLocalDatasourceImpl(this._prefs);
+  AuthLocalDatasourceImpl(this._prefs, this._tokenStorage);
 
   final SharedPreferences _prefs;
+  final TokenStorageService _tokenStorage;
 
   @override
-  Future<void> saveSession(UserModel user, String token) async {
+  Future<void> saveSession(UserModel user, String token, {String? refreshToken}) async {
     try {
-      await _prefs.setString(AppConstants.keyAuthToken, token);
+      await _tokenStorage.saveToken(token);
+      if (refreshToken != null && refreshToken.isNotEmpty) {
+        await _tokenStorage.saveRefreshToken(refreshToken);
+      }
       await _prefs.setString(AppConstants.keyUserId, user.id);
       await _prefs.setString(AppConstants.keyUserEmail, user.email);
       await _prefs.setString(AppConstants.keyUserName, user.name);
@@ -58,7 +64,7 @@ class AuthLocalDatasourceImpl implements AuthLocalDatasource {
   @override
   Future<void> clearSession() async {
     try {
-      await _prefs.remove(AppConstants.keyAuthToken);
+      await _tokenStorage.clearTokens();
       await _prefs.remove(AppConstants.keyUserId);
       await _prefs.remove(AppConstants.keyUserEmail);
       await _prefs.remove(AppConstants.keyUserName);
@@ -95,7 +101,7 @@ class AuthLocalDatasourceImpl implements AuthLocalDatasource {
 
   @override
   Future<String?> getStoredToken() async {
-    return _prefs.getString(AppConstants.keyAuthToken);
+    return _tokenStorage.getToken();
   }
 
   @override

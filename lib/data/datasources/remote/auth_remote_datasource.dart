@@ -8,15 +8,25 @@ import '../../models/user_model.dart';
 
 /// Resultado del login: usuario y token para persistir.
 class LoginResult {
-  const LoginResult({required this.user, required this.token});
+  const LoginResult({required this.user, required this.token, this.refreshToken});
 
   final UserModel user;
   final String token;
+  final String? refreshToken;
+}
+
+/// Resultado de POST /auth/refresh (o /api/auth/refresh).
+class RefreshResult {
+  const RefreshResult({required this.token, required this.refreshToken});
+
+  final String token;
+  final String refreshToken;
 }
 
 /// Fuente de datos remota para autenticación.
 abstract interface class AuthRemoteDatasource {
   Future<LoginResult> login(String email, String password);
+  Future<RefreshResult> refreshToken(String refreshToken);
   Future<void> recuperarAcceso({required String userName});
   Future<void> cambiarContrasenaDesdeRecuperacion({
     required String token,
@@ -39,6 +49,12 @@ class AuthRemoteDatasourceMock implements AuthRemoteDatasource {
       name: email.split('@').first,
     );
     return LoginResult(user: user, token: 'mock-token');
+  }
+
+  @override
+  Future<RefreshResult> refreshToken(String refreshToken) async {
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    return RefreshResult(token: 'mock-token-new', refreshToken: 'mock-refresh-new');
   }
 
   @override
@@ -75,6 +91,7 @@ class AuthRemoteDatasourceReal implements AuthRemoteDatasource {
     final body = LoginRequestModel(userName: email, password: password).toJson();
     try {
       final data = await _client.post('/api/login', body: body);
+      debugPrint('Login response: $data');
       final response = LoginResponseModel.fromJson(data);
       if (response.token.isEmpty) {
         debugPrint('! AuthRemoteDatasourceReal: respuesta sin token');
@@ -98,7 +115,12 @@ class AuthRemoteDatasourceReal implements AuthRemoteDatasource {
       );
 
       debugPrint('AuthRemoteDatasourceReal: login exitoso para ${user.email}');
-      return LoginResult(user: user, token: response.token);
+      debugPrint('Login exitoso; token guardado.');
+      return LoginResult(
+        user: user,
+        token: response.token,
+        refreshToken: response.refreshToken,
+      );
     } on AuthException {
       rethrow;
     } on NetworkException catch (e) {
@@ -107,7 +129,33 @@ class AuthRemoteDatasourceReal implements AuthRemoteDatasource {
     }
   }
 
+  static const _pathRefresh = '/api/auth/refresh';
   static const _pathRecuperarAcceso = '/api/login/usuario/solicitud/recuperacion';
+
+  @override
+  Future<RefreshResult> refreshToken(String refreshToken) async {
+    debugPrint('Intentando renovar token...');
+    try {
+      final body = <String, dynamic>{'refreshToken': refreshToken};
+      final data = await _client.post(_pathRefresh, body: body);
+      final token = data['token'] as String?;
+      final newRefreshToken = data['refreshToken'] as String?;
+      if (token == null || token.isEmpty) {
+        throw const AuthException('No se recibió token en refresh.', '400');
+      }
+      debugPrint('Token renovado correctamente');
+      return RefreshResult(
+        token: token,
+        refreshToken: newRefreshToken ?? refreshToken,
+      );
+    } on AuthException catch (e) {
+      debugPrint('Refresh token fallido: ${e.code} ${e.message}');
+      rethrow;
+    } on NetworkException catch (e) {
+      debugPrint('Refresh token fallido (red): ${e.message}');
+      throw AuthException(e.message, e.code);
+    }
+  }
 
   @override
   Future<void> recuperarAcceso({required String userName}) async {

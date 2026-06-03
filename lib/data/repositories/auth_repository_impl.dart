@@ -3,6 +3,7 @@ import '../../domain/entities/user_entity.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../datasources/local/auth_local_datasource.dart';
 import '../datasources/remote/auth_remote_datasource.dart';
+import '../models/user_model.dart';
 
 /// Implementación del repositorio de autenticación.
 class AuthRepositoryImpl implements AuthRepository {
@@ -15,7 +16,7 @@ class AuthRepositoryImpl implements AuthRepository {
   Future<UserEntity?> login(String email, String password) async {
     try {
       final result = await _remote.login(email, password);
-      await _local.saveSession(result.user, result.token);
+      await _local.saveSession(result.user, result.token, refreshToken: result.refreshToken);
       return result.user;
     } on AppException {
       rethrow;
@@ -35,6 +36,24 @@ class AuthRepositoryImpl implements AuthRepository {
   @override
   Future<bool> isLoggedIn() async {
     return _local.hasSession();
+  }
+
+  @override
+  Future<void> saveSession(UserEntity user, String token, {String? refreshToken}) async {
+    final model = user is UserModel
+        ? user
+        : UserModel(
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            roleName: user.roleName,
+            apellidoPaterno: user.apellidoPaterno,
+            apellidoMaterno: user.apellidoMaterno,
+            telefono: user.telefono,
+            userName: user.userName,
+            fotoPerfil: user.fotoPerfil,
+          );
+    await _local.saveSession(model, token, refreshToken: refreshToken);
   }
 
   @override

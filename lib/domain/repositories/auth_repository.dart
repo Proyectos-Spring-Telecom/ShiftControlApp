@@ -6,6 +6,8 @@ abstract interface class AuthRepository {
   Future<void> logout();
   Future<UserEntity?> getCurrentUser();
   Future<bool> isLoggedIn();
+  /// Guarda sesión (p. ej. tras login por Face Auth) sin llamar al API remoto principal.
+  Future<void> saveSession(UserEntity user, String token);
   Future<void> recuperarAcceso(String userName);
   Future<void> cambiarContrasenaDesdeRecuperacion({
     required String token,

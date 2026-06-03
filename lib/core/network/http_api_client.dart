@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -7,20 +8,26 @@ import '../../config/app_environment.dart';
 import '../errors/app_exception.dart';
 import 'api_client.dart';
 
-/// Implementación del [ApiClient] usando package [http].
-/// Usa [AppEnvironmentConfig.baseUrl], headers globales y Bearer dinámico.
-/// TODO: Añadir interceptor para refresh token.
-/// ? Errores HTTP se mapean a [NetworkException] o [AuthException].
+/// Implementación del [ApiClient] con soporte para refresh token.
+/// - Adjunta Bearer token desde [getToken] (no en paths login/refresh).
+/// - Ante 401/403 intenta [refreshToken] una vez y reintenta la request.
+/// - Si el refresh falla llama [onSessionExpired] y lanza.
 class HttpApiClient implements ApiClient {
   HttpApiClient({
     required this.getToken,
+    this.refreshToken,
+    this.onSessionExpired,
     String? baseUrl,
   }) : _baseUrl = baseUrl ?? AppEnvironmentConfig.baseUrl;
 
-  /// Callback para obtener el token (sin Authorization en login).
   final Future<String?> Function() getToken;
+  final Future<String?> Function()? refreshToken;
+  final VoidCallback? onSessionExpired;
 
   final String _baseUrl;
+
+  bool _isRefreshing = false;
+  Completer<String?>? _refreshCompleter;
 
   static const _defaultHeaders = {
     'Content-Type': 'application/json',
@@ -30,6 +37,11 @@ class HttpApiClient implements ApiClient {
   Uri _uri(String path) {
     final p = path.startsWith('/') ? path : '/$path';
     return Uri.parse('$_baseUrl$p');
+  }
+
+  bool _isAuthPath(String path) {
+    final lower = path.toLowerCase();
+    return lower.contains('login') || lower.contains('refresh');
   }
 
   Future<Map<String, String>> _headers({Map<String, String>? extra, bool useAuth = true}) async {
@@ -44,7 +56,7 @@ class HttpApiClient implements ApiClient {
     return map;
   }
 
-  void _handleResponse(http.Response response) {
+  void _handleResponse(http.Response response, {required String path}) {
     if (response.statusCode >= 200 && response.statusCode < 300) return;
     final body = response.body;
     String message;
@@ -57,6 +69,10 @@ class HttpApiClient implements ApiClient {
         message = _parseMessage(body) ?? 'Sesión expirada o credenciales inválidas. Vuelve a iniciar sesión.';
         debugPrint('! ApiClient 401: $message');
         throw AuthException(message, '401');
+      case 403:
+        message = _parseMessage(body) ?? 'No autorizado.';
+        debugPrint('! ApiClient 403: $message');
+        throw AuthException(message, '403');
       case 404:
         message = _parseMessage(body) ?? 'No encontrado.';
         throw NetworkException(message, '404');
@@ -81,11 +97,62 @@ class HttpApiClient implements ApiClient {
     }
   }
 
+  Future<String?> _doRefresh() async {
+    if (_refreshCompleter != null) {
+      try {
+        return await _refreshCompleter!.future;
+      } on AuthException {
+        rethrow;
+      }
+    }
+    _refreshCompleter = Completer<String?>();
+    _isRefreshing = true;
+    try {
+      final newToken = refreshToken != null ? await refreshToken!() : null;
+      _refreshCompleter!.complete(newToken);
+      return newToken;
+    } on AuthException catch (e) {
+      _refreshCompleter!.completeError(e);
+      rethrow;
+    } catch (e) {
+      _refreshCompleter!.complete(null);
+      return null;
+    } finally {
+      _isRefreshing = false;
+      _refreshCompleter = null;
+    }
+  }
+
+  void _triggerSessionExpired() {
+    debugPrint('Refresh token expirado. Cerrando sesión.');
+    onSessionExpired?.call();
+  }
+
   @override
   Future<Map<String, dynamic>> get(String path, {Map<String, String>? headers}) async {
-    final h = await _headers(extra: headers);
-    final response = await http.get(_uri(path), headers: h);
-    _handleResponse(response);
+    final useAuth = !_isAuthPath(path);
+    var h = await _headers(extra: headers, useAuth: useAuth);
+    var response = await http.get(_uri(path), headers: h);
+
+    if ((response.statusCode == 401 || response.statusCode == 403) &&
+        useAuth &&
+        refreshToken != null) {
+      try {
+        final newToken = await _doRefresh();
+        if (newToken != null && newToken.isNotEmpty) {
+          debugPrint('Reintentando request original (GET)');
+          h = await _headers(extra: headers, useAuth: true);
+          response = await http.get(_uri(path), headers: h);
+        } else {
+          _triggerSessionExpired();
+        }
+      } on AuthException {
+        _triggerSessionExpired();
+        rethrow;
+      }
+    }
+
+    _handleResponse(response, path: path);
     if (response.body.isEmpty) return {};
     try {
       return jsonDecode(response.body) as Map<String, dynamic>;
@@ -101,12 +168,30 @@ class HttpApiClient implements ApiClient {
     dynamic body,
     Map<String, String>? headers,
   }) async {
-    // ! Login: no enviar Authorization
-    final useAuth = !path.toLowerCase().contains('login');
-    final h = await _headers(extra: headers, useAuth: useAuth);
+    final useAuth = !_isAuthPath(path);
+    var h = await _headers(extra: headers, useAuth: useAuth);
     final encoded = body != null ? jsonEncode(body is Map ? body : body) : null;
-    final response = await http.post(_uri(path), headers: h, body: encoded);
-    _handleResponse(response);
+    var response = await http.post(_uri(path), headers: h, body: encoded);
+
+    if ((response.statusCode == 401 || response.statusCode == 403) &&
+        useAuth &&
+        refreshToken != null) {
+      try {
+        final newToken = await _doRefresh();
+        if (newToken != null && newToken.isNotEmpty) {
+          debugPrint('Reintentando request original (POST)');
+          h = await _headers(extra: headers, useAuth: true);
+          response = await http.post(_uri(path), headers: h, body: encoded);
+        } else {
+          _triggerSessionExpired();
+        }
+      } on AuthException {
+        _triggerSessionExpired();
+        rethrow;
+      }
+    }
+
+    _handleResponse(response, path: path);
     if (response.body.isEmpty) return {};
     try {
       return jsonDecode(response.body) as Map<String, dynamic>;
@@ -122,10 +207,28 @@ class HttpApiClient implements ApiClient {
     dynamic body,
     Map<String, String>? headers,
   }) async {
-    final h = await _headers(extra: headers);
+    var h = await _headers(extra: headers);
     final encoded = body != null ? jsonEncode(body is Map ? body : body) : null;
-    final response = await http.put(_uri(path), headers: h, body: encoded);
-    _handleResponse(response);
+    var response = await http.put(_uri(path), headers: h, body: encoded);
+
+    if ((response.statusCode == 401 || response.statusCode == 403) &&
+        refreshToken != null) {
+      try {
+        final newToken = await _doRefresh();
+        if (newToken != null && newToken.isNotEmpty) {
+          debugPrint('Reintentando request original (PUT)');
+          h = await _headers(extra: headers);
+          response = await http.put(_uri(path), headers: h, body: encoded);
+        } else {
+          _triggerSessionExpired();
+        }
+      } on AuthException {
+        _triggerSessionExpired();
+        rethrow;
+      }
+    }
+
+    _handleResponse(response, path: path);
     if (response.body.isEmpty) return {};
     try {
       return jsonDecode(response.body) as Map<String, dynamic>;
@@ -141,13 +244,28 @@ class HttpApiClient implements ApiClient {
     dynamic body,
     Map<String, String>? headers,
   }) async {
-    final h = await _headers(extra: headers);
+    var h = await _headers(extra: headers);
     final encoded = body != null ? jsonEncode(body is Map ? body : body) : null;
-    final uri = _uri(path);
-    debugPrint('ApiClient PATCH $uri bodyLength=${encoded?.length ?? 0}');
-    final response = await http.patch(uri, headers: h, body: encoded);
-    debugPrint('ApiClient PATCH response ${response.statusCode}');
-    _handleResponse(response);
+    var response = await http.patch(_uri(path), headers: h, body: encoded);
+
+    if ((response.statusCode == 401 || response.statusCode == 403) &&
+        refreshToken != null) {
+      try {
+        final newToken = await _doRefresh();
+        if (newToken != null && newToken.isNotEmpty) {
+          debugPrint('Reintentando request original (PATCH)');
+          h = await _headers(extra: headers);
+          response = await http.patch(_uri(path), headers: h, body: encoded);
+        } else {
+          _triggerSessionExpired();
+        }
+      } on AuthException {
+        _triggerSessionExpired();
+        rethrow;
+      }
+    }
+
+    _handleResponse(response, path: path);
     if (response.body.isEmpty) return {};
     try {
       return jsonDecode(response.body) as Map<String, dynamic>;
@@ -159,9 +277,27 @@ class HttpApiClient implements ApiClient {
 
   @override
   Future<Map<String, dynamic>> delete(String path, {Map<String, String>? headers}) async {
-    final h = await _headers(extra: headers);
-    final response = await http.delete(_uri(path), headers: h);
-    _handleResponse(response);
+    var h = await _headers(extra: headers);
+    var response = await http.delete(_uri(path), headers: h);
+
+    if ((response.statusCode == 401 || response.statusCode == 403) &&
+        refreshToken != null) {
+      try {
+        final newToken = await _doRefresh();
+        if (newToken != null && newToken.isNotEmpty) {
+          debugPrint('Reintentando request original (DELETE)');
+          h = await _headers(extra: headers);
+          response = await http.delete(_uri(path), headers: h);
+        } else {
+          _triggerSessionExpired();
+        }
+      } on AuthException {
+        _triggerSessionExpired();
+        rethrow;
+      }
+    }
+
+    _handleResponse(response, path: path);
     if (response.body.isEmpty) return {};
     try {
       return jsonDecode(response.body) as Map<String, dynamic>;

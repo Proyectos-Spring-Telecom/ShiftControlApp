@@ -1,10 +1,52 @@
 import '../../models/checklist_type.dart';
 
-enum VehicleView { frontal, trasera, lateralIzquierdo, lateralDerecho }
+enum VehicleView {
+  frontal(1, 'Frontal'),
+  trasera(2, 'Trasera'),
+  lateralIzquierdo(3, 'Lateral Izquierdo'),
+  lateralDerecho(4, 'Lateral Derecho');
 
-enum DamageType { abolladura, rayon, rotura }
+  const VehicleView(this.idSeccion, this.nombre);
 
-enum DamageSeverity { baja, media, alta }
+  final int idSeccion;
+  final String nombre;
+
+  /// Alias requerido por POST /api/turnos/inspeccion-vehiculo-ex.
+  int get idCatVistaVehiculo => idSeccion;
+}
+
+enum DamageType {
+  rayon(1, 'Rayón'),
+  golpe(2, 'Golpe'),
+  abolladura(3, 'Abolladura'),
+  grieta(4, 'Grieta'),
+  rotura(5, 'Rotura'),
+  raspon(6, 'Raspón'),
+  corrosionOxido(7, 'Corrosión / Óxido'),
+  pinturaDanada(8, 'Pintura dañada'),
+  faltante(9, 'Faltante'),
+  estrellado(10, 'Estrellado');
+
+  const DamageType(this.idTipoDanio, this.nombre);
+
+  final int idTipoDanio;
+  final String nombre;
+
+  /// Alias requerido por POST /api/turnos/inspeccion-vehiculo-ex.
+  int get idCatTipoDano => idTipoDanio;
+}
+
+enum DamageSeverity {
+  baja(1, 'Baja'),
+  media(2, 'Media'),
+  alta(3, 'Alta'),
+  critico(4, 'Crítico');
+
+  const DamageSeverity(this.idCatGradoSeveridad, this.nombre);
+
+  final int idCatGradoSeveridad;
+  final String nombre;
+}
 
 /// Representa un punto interactivo en el vehículo.
 class DamagePoint {
@@ -27,6 +69,16 @@ class DamagePoint {
   final String zoneName;
   bool isDamaged;
   DamageDetail? damageDetail;
+
+  /// ID de sección del vehículo según la vista (Frontal=1, Trasera=2, etc.).
+  int get idSeccion => view.idSeccion;
+  String get nombreSeccion => view.nombre;
+
+  /// Sección + tipo de daño registrado (disponible cuando [damageDetail] no es null).
+  Map<String, dynamic>? get datosRegistroDanio => damageDetail?.datosRegistroConSeccion(
+        idSeccion: idSeccion,
+        nombreSeccion: nombreSeccion,
+      );
 
   DamagePoint copyWith({
     bool? isDamaged,
@@ -60,6 +112,25 @@ class DamageDetail {
   final String? description;
   final String? photoPath;
 
+  int get idTipoDanio => damageType.idTipoDanio;
+  int get idCatTipoDano => damageType.idCatTipoDano;
+  String get nombreTipoDanio => damageType.nombre;
+
+  int get idCatGradoSeveridad => severity.idCatGradoSeveridad;
+  String get nombreSeveridad => severity.nombre;
+
+  /// Sección del vehículo + tipo de daño para consumo futuro de API.
+  Map<String, dynamic> datosRegistroConSeccion({
+    required int idSeccion,
+    required String nombreSeccion,
+  }) =>
+      {
+        'idSeccion': idSeccion,
+        'nombreSeccion': nombreSeccion,
+        'idTipoDanio': idTipoDanio,
+        'nombreTipoDanio': nombreTipoDanio,
+      };
+
   DamageDetail copyWith({
     String? affectedPart,
     DamageType? damageType,
@@ -88,6 +159,10 @@ class DamageRegistrationState {
   final ChecklistType checklistType;
   final List<DamagePoint> points;
   final VehicleView currentView;
+
+  /// Sección visual seleccionada (pestaña activa).
+  int get idSeccionSeleccionada => currentView.idSeccion;
+  String get nombreSeccionSeleccionada => currentView.nombre;
 
   List<DamagePoint> get currentViewPoints =>
       points.where((p) => p.view == currentView).toList();

@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/errors/app_exception.dart';
+import '../../../data/models/registrar_luces_vehiculo_request.dart';
+import '../mi_turno_provider.dart';
 import '../models/checklist_type.dart';
+import '../turno_apertura_provider.dart';
 import 'luces_vehiculo_colors.dart';
 
-class LucesVehiculoPage extends StatefulWidget {
+class LucesVehiculoPage extends ConsumerStatefulWidget {
   const LucesVehiculoPage({
     super.key,
     this.onContinuar,
@@ -14,26 +19,90 @@ class LucesVehiculoPage extends StatefulWidget {
   final ChecklistType checklistType;
 
   @override
-  State<LucesVehiculoPage> createState() => _LucesVehiculoPageState();
+  ConsumerState<LucesVehiculoPage> createState() => _LucesVehiculoPageState();
 }
 
-class _LucesVehiculoPageState extends State<LucesVehiculoPage> {
+class _LucesVehiculoPageState extends ConsumerState<LucesVehiculoPage> {
+  bool _guardandoLuces = false;
+
   final Map<String, bool> _lucesEstado = {
     'carretera': true,
     'cruce': true,
     'intermitentes_delanteras': true,
     'direccionales_delanteras': true,
-    'intermitentes_laterales': false,
-    'intermitentes_traseras': false,
-    'direccionales_traseras': false,
-    'reversa': false,
-    'freno': false,
+    'intermitentes_laterales': true,
+    'intermitentes_traseras': true,
+    'direccionales_traseras': true,
+    'reversa': true,
+    'freno': true,
   };
 
   void _toggleLuz(String key) {
     setState(() {
       _lucesEstado[key] = !_lucesEstado[key]!;
     });
+  }
+
+  Future<void> _continuar() async {
+    if (widget.checklistType != ChecklistType.apertura) {
+      _navegarSiguiente();
+      return;
+    }
+
+    final idBitacora = ref.read(turnoAperturaProvider).idBitacoraApertura;
+    if (idBitacora == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No hay bitácora de apertura. Completa el paso anterior.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _guardandoLuces = true);
+
+    try {
+      final request = RegistrarLucesVehiculoRequest.fromEstadoUi(
+        idBitacoraVehiculo: idBitacora,
+        lucesUi: _lucesEstado,
+      );
+
+      await ref.read(turnosServiceProvider).registrarLucesVehiculo(request);
+
+      if (!mounted) return;
+      setState(() => _guardandoLuces = false);
+      _navegarSiguiente();
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      setState(() => _guardandoLuces = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message), backgroundColor: Colors.red),
+      );
+    } on NetworkException catch (e) {
+      if (!mounted) return;
+      setState(() => _guardandoLuces = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message), backgroundColor: Colors.red),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _guardandoLuces = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al registrar luces del vehículo: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void _navegarSiguiente() {
+    if (widget.onContinuar != null) {
+      widget.onContinuar!();
+    } else {
+      Navigator.of(context).pop();
+    }
   }
 
   @override
@@ -208,34 +277,35 @@ class _LucesVehiculoPageState extends State<LucesVehiculoPage> {
         width: double.infinity,
         height: 52,
         child: ElevatedButton(
-          onPressed: () {
-            if (widget.onContinuar != null) {
-              widget.onContinuar!();
-            } else {
-              Navigator.of(context).pop();
-            }
-          },
+          onPressed: _guardandoLuces ? null : _continuar,
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF001C6A),
             foregroundColor: Colors.white,
+            disabledBackgroundColor: LucesVehiculoColors.textSecondary(context),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
             ),
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                'Continuar',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
+          child: _guardandoLuces
+              ? const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                )
+              : Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'Continuar',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
                     ),
-              ),
-              const SizedBox(width: 8),
-              const Icon(Icons.arrow_forward, size: 20),
-            ],
-          ),
+                    const SizedBox(width: 8),
+                    const Icon(Icons.arrow_forward, size: 20),
+                  ],
+                ),
         ),
       ),
     );

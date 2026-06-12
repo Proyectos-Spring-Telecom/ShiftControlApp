@@ -15,18 +15,21 @@ class PlateReadResult {
   final double? confidence;
 }
 
-/// Fuente de datos remota para lectura de placa (API BehaviorIQ).
+/// Fuente de datos remota para lectura de placa (ShiftControl BFF).
 abstract interface class PlateReadRemoteDatasource {
   Future<PlateReadResult> readPlate(String token, List<int> imageBytes);
 }
 
 class PlateReadRemoteDatasourceImpl implements PlateReadRemoteDatasource {
   PlateReadRemoteDatasourceImpl({String? baseUrl})
-      : _baseUrl = baseUrl ?? AppEnvironmentConfig.faceAuthBaseUrl;
+      : _baseUrl = baseUrl ?? AppEnvironmentConfig.baseUrl;
 
   final String _baseUrl;
 
-  Uri get _uri => Uri.parse('$_baseUrl/plate/read');
+  Uri get _uri {
+    final base = _baseUrl.endsWith('/') ? _baseUrl : '$_baseUrl/';
+    return Uri.parse('${base}api/plate/read');
+  }
 
   static final _contentTypeJpeg = MediaType('image', 'jpeg');
 
@@ -41,7 +44,7 @@ class PlateReadRemoteDatasourceImpl implements PlateReadRemoteDatasource {
     }
   }
 
-  /// POST /plate/read: request body = multipart/form-data con un único campo "file" (binary).
+  /// POST /api/plate/read: request body = multipart/form-data con un único campo "file" (binary).
   /// Equivalente curl: -X POST ... -H 'accept: application/json' -H 'Authorization: Bearer <token>' -H 'Content-Type: multipart/form-data' -F 'file=@placa.jpeg;type=image/jpeg'
   /// Response 200/201: body JSON { "plate_number": "12G-270", "confidence": 0.99 }. Headers típicos: Content-Type: application/json; charset=utf-8, server: nginx, etc.
   @override

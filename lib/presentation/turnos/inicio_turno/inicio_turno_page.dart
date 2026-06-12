@@ -7,7 +7,6 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../core/errors/app_exception.dart';
 import '../../../core/utils/date_format_utils.dart';
-import '../../../data/datasources/remote/face_auth_remote_datasource.dart';
 import '../../../data/datasources/remote/placas_validar_remote_datasource.dart';
 import '../../../domain/entities/user_entity.dart';
 import '../../controllers/auth_controller.dart';
@@ -47,6 +46,53 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
   bool _validandoPlaca = false;
   bool _creandoTurno = false;
   PlacasValidarResult? _placaValidarResult;
+  Position? _cachedPosition;
+  String? _ubicacionDisplayName;
+  bool _cargandoUbicacion = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _cargarLugarDesdeGps();
+    });
+  }
+
+  Future<void> _cargarLugarDesdeGps() async {
+    if (!mounted) return;
+    setState(() => _cargandoUbicacion = true);
+
+    final position = await _obtenerUbicacion();
+    if (position == null) {
+      if (mounted) {
+        setState(() {
+          _cargandoUbicacion = false;
+          _ubicacionDisplayName = null;
+        });
+      }
+      return;
+    }
+    _cachedPosition = position;
+
+    try {
+      final resultado = await ref.read(turnosServiceProvider).obtenerDireccion(
+            lat: position.latitude,
+            lon: position.longitude,
+          );
+      if (!mounted) return;
+      setState(() {
+        _ubicacionDisplayName = resultado.displayName;
+        _cargandoUbicacion = false;
+      });
+    } catch (e) {
+      debugPrint('Error obteniendo dirección: $e');
+      if (!mounted) return;
+      setState(() {
+        _ubicacionDisplayName = null;
+        _cargandoUbicacion = false;
+      });
+    }
+  }
 
   Future<void> _tomarFotoResguardo() async {
     final XFile? photo = await _picker.pickImage(source: ImageSource.camera);
@@ -152,9 +198,24 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
       return;
     }
 
+    final placaValidada = _placaValidarResult?.placa;
+    if (placaValidada == null || placaValidada.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No hay placa validada. Espera a que termine la validación.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     setState(() => _creandoTurno = true);
 
-    final position = await _obtenerUbicacion();
+    var position = _cachedPosition;
+    if (position == null) {
+      position = await _obtenerUbicacion();
+      if (position != null) _cachedPosition = position;
+    }
     if (position == null) {
       if (mounted) setState(() => _creandoTurno = false);
       return;
@@ -163,6 +224,7 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
     try {
       final turnosService = ref.read(turnosServiceProvider);
       final response = await turnosService.crearTurno(
+        placa: placaValidada,
         latitud: position.latitude,
         longitud: position.longitude,
         evidenciaBytes: _evidenciaBytes!,
@@ -215,7 +277,7 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
     }
   }
 
-  /// Llama a GET /placas/validar con numeroPlaca; idCliente e idSolucion vienen de GET /auth/me.
+  /// Llama a GET /api/placas/validar con numeroPlaca.
   Future<void> _validarPlaca(String numeroPlaca) async {
     final token = await ref.read(authLocalDatasourceProvider).getStoredToken();
     if (token == null || token.isEmpty) {
@@ -229,21 +291,18 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
     if (!mounted) return;
     setState(() => _validandoPlaca = true);
     try {
-      final meResult = await ref.read(faceAuthRemoteDatasourceProvider).me(token);
-      final idCliente = int.tryParse(meResult.idCliente);
-      final idSolucion = meResult.idSolucion is int ? meResult.idSolucion as int : int.tryParse(meResult.idSolucion?.toString() ?? '');
-      if (!mounted) return;
       final result = await ref.read(placasValidarRemoteDatasourceProvider).validar(
             token,
             numeroPlaca,
-            idCliente: idCliente,
-            idSolucion: idSolucion,
           );
       if (!mounted) return;
       ref.read(placaValidadaProvider.notifier).state = result;
       setState(() {
         _validandoPlaca = false;
         _placaValidarResult = result;
+        if (result.registered && result.placa != null && result.placa!.isNotEmpty) {
+          _vehiculoSeleccionado = result.placa;
+        }
       });
       if (!result.registered) {
         showAppAlertBanner(
@@ -427,7 +486,9 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
         ),
         const SizedBox(height: 8),
         Text(
-          'Lugar: Tlaxcala',
+          _cargandoUbicacion
+              ? 'Lugar: Obteniendo ubicación...'
+              : 'Lugar: ${_ubicacionDisplayName ?? 'No disponible'}',
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: InicioTurnoColors.textPrimary(context),
               ),

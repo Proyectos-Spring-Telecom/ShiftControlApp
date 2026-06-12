@@ -1,42 +1,57 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../../../core/errors/app_exception.dart';
 import '../../../../core/utils/read_file_bytes_stub.dart'
     if (dart.library.io) '../../../../core/utils/read_file_bytes_io.dart' as file_reader;
 import '../../captura_odometro/dashed_border_box.dart';
+import '../../mi_turno_provider.dart';
+import '../../models/checklist_type.dart';
+import '../../turno_apertura_provider.dart';
 import '../models/damage_point_model.dart';
 import '../registro_danos_colors.dart';
 
-/// ! Bottom sheet para registrar el detalle de un daño.
-/// 
-/// Permite al usuario especificar:
-/// - Parte afectada
-/// - Tipo de daño
-/// - Severidad
-/// - Fotografía del daño
-class DamageDetailSheet extends StatefulWidget {
+/// Bottom sheet para registrar el detalle de un daño.
+class DamageDetailSheet extends ConsumerStatefulWidget {
   const DamageDetailSheet({
     super.key,
     required this.point,
+    required this.checklistType,
     required this.onSave,
   });
 
   final DamagePoint point;
+  final ChecklistType checklistType;
   final void Function(DamageDetail detail) onSave;
 
   @override
-  State<DamageDetailSheet> createState() => _DamageDetailSheetState();
+  ConsumerState<DamageDetailSheet> createState() => _DamageDetailSheetState();
 }
 
-class _DamageDetailSheetState extends State<DamageDetailSheet> {
+class _DamageDetailSheetState extends ConsumerState<DamageDetailSheet> {
   final ImagePicker _picker = ImagePicker();
   late TextEditingController _parteAfectadaController;
-  DamageType _selectedType = DamageType.abolladura;
-  DamageSeverity _selectedSeverity = DamageSeverity.media;
+  DamageType? _selectedType;
+  DamageSeverity? _selectedSeverity;
   Uint8List? _photoBytes;
   String? _photoPathForSave;
+  bool _guardando = false;
+
+  static const Map<DamageType, IconData> _damageTypeIcons = {
+    DamageType.rayon: Icons.gesture,
+    DamageType.golpe: Icons.sports_mma_outlined,
+    DamageType.abolladura: Icons.photo_library_outlined,
+    DamageType.grieta: Icons.broken_image_outlined,
+    DamageType.rotura: Icons.warning_amber_outlined,
+    DamageType.raspon: Icons.texture_outlined,
+    DamageType.corrosionOxido: Icons.water_drop_outlined,
+    DamageType.pinturaDanada: Icons.format_paint_outlined,
+    DamageType.faltante: Icons.remove_circle_outline,
+    DamageType.estrellado: Icons.broken_image_outlined,
+  };
 
   @override
   void initState() {
@@ -44,6 +59,8 @@ class _DamageDetailSheetState extends State<DamageDetailSheet> {
     _parteAfectadaController = TextEditingController(
       text: widget.point.damageDetail?.affectedPart ?? _getDefaultPart(),
     );
+    _parteAfectadaController.addListener(() => setState(() {}));
+
     if (widget.point.damageDetail != null) {
       _selectedType = widget.point.damageDetail!.damageType;
       _selectedSeverity = widget.point.damageDetail!.severity;
@@ -60,6 +77,15 @@ class _DamageDetailSheetState extends State<DamageDetailSheet> {
 
   String _getDefaultPart() {
     return 'Carrocería de ${widget.point.zoneName}';
+  }
+
+  bool get _canGuardar {
+    return widget.point.view.idCatVistaVehiculo > 0 &&
+        _parteAfectadaController.text.trim().isNotEmpty &&
+        _selectedType != null &&
+        _selectedSeverity != null &&
+        _photoBytes != null &&
+        _photoBytes!.isNotEmpty;
   }
 
   @override
@@ -81,11 +107,86 @@ class _DamageDetailSheetState extends State<DamageDetailSheet> {
     }
   }
 
-  void _save() {
+  String _evidenciaFilename() {
+    final path = _photoPathForSave;
+    if (path != null && path.isNotEmpty) {
+      final segments = path.split(RegExp(r'[/\\]'));
+      if (segments.isNotEmpty && segments.last.isNotEmpty) {
+        return segments.last;
+      }
+    }
+    return 'evidencia.jpg';
+  }
+
+  Future<void> _save() async {
+    if (!_canGuardar || _guardando) return;
+
+    final tipo = _selectedType!;
+    final severidad = _selectedSeverity!;
+    final parte = _parteAfectadaController.text.trim();
+    final fotoBytes = _photoBytes!;
+
+    if (widget.checklistType == ChecklistType.apertura) {
+      final idBitacora = ref.read(turnoAperturaProvider).idBitacoraApertura;
+      if (idBitacora == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No hay bitácora de apertura. Completa el paso anterior.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      setState(() => _guardando = true);
+
+      try {
+        await ref.read(turnosServiceProvider).registrarInspeccionVehiculoEx(
+              idBitacoraVehiculo: idBitacora,
+              idCatVistaVehiculo: widget.point.view.idCatVistaVehiculo,
+              partesVehiculoEx: parte,
+              idCatTipoDano: tipo.idCatTipoDano,
+              idCatGradoSeveridad: severidad.idCatGradoSeveridad,
+              evidenciaFotograficaBytes: fotoBytes,
+              filename: _evidenciaFilename(),
+            );
+
+        if (!mounted) return;
+        setState(() => _guardando = false);
+        _guardarLocal(tipo, severidad, parte);
+      } on AuthException catch (e) {
+        if (!mounted) return;
+        setState(() => _guardando = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message), backgroundColor: Colors.red),
+        );
+      } on NetworkException catch (e) {
+        if (!mounted) return;
+        setState(() => _guardando = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message), backgroundColor: Colors.red),
+        );
+      } catch (e) {
+        if (!mounted) return;
+        setState(() => _guardando = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al registrar daño: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    _guardarLocal(tipo, severidad, parte);
+  }
+
+  void _guardarLocal(DamageType tipo, DamageSeverity severidad, String parte) {
     final detail = DamageDetail(
-      affectedPart: _parteAfectadaController.text,
-      damageType: _selectedType,
-      severity: _selectedSeverity,
+      affectedPart: parte,
+      damageType: tipo,
+      severity: severidad,
       photoPath: _photoPathForSave,
     );
     widget.onSave(detail);
@@ -212,29 +313,18 @@ class _DamageDetailSheetState extends State<DamageDetailSheet> {
               ),
         ),
         const SizedBox(height: 12),
-        _DamageTypeOption(
-          type: DamageType.abolladura,
-          label: 'Abolladura',
-          icon: Icons.photo_library_outlined,
-          isSelected: _selectedType == DamageType.abolladura,
-          onTap: () => setState(() => _selectedType = DamageType.abolladura),
-        ),
-        const SizedBox(height: 8),
-        _DamageTypeOption(
-          type: DamageType.rayon,
-          label: 'Rayón',
-          icon: Icons.gesture,
-          isSelected: _selectedType == DamageType.rayon,
-          onTap: () => setState(() => _selectedType = DamageType.rayon),
-        ),
-        const SizedBox(height: 8),
-        _DamageTypeOption(
-          type: DamageType.rotura,
-          label: 'Rotura',
-          icon: Icons.broken_image_outlined,
-          isSelected: _selectedType == DamageType.rotura,
-          onTap: () => setState(() => _selectedType = DamageType.rotura),
-        ),
+        ...DamageType.values.expand((type) sync* {
+          yield _DamageTypeOption(
+            type: type,
+            label: type.nombre,
+            icon: _damageTypeIcons[type] ?? Icons.help_outline,
+            isSelected: _selectedType == type,
+            onTap: () => setState(() => _selectedType = type),
+          );
+          if (type != DamageType.values.last) {
+            yield const SizedBox(height: 8);
+          }
+        }),
       ],
     );
   }
@@ -256,7 +346,7 @@ class _DamageDetailSheetState extends State<DamageDetailSheet> {
             Expanded(
               child: _SeverityOption(
                 severity: DamageSeverity.baja,
-                label: 'Baja',
+                label: DamageSeverity.baja.nombre,
                 isSelected: _selectedSeverity == DamageSeverity.baja,
                 onTap: () => setState(() => _selectedSeverity = DamageSeverity.baja),
               ),
@@ -265,18 +355,31 @@ class _DamageDetailSheetState extends State<DamageDetailSheet> {
             Expanded(
               child: _SeverityOption(
                 severity: DamageSeverity.media,
-                label: 'Media',
+                label: DamageSeverity.media.nombre,
                 isSelected: _selectedSeverity == DamageSeverity.media,
                 onTap: () => setState(() => _selectedSeverity = DamageSeverity.media),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _SeverityOption(
+                severity: DamageSeverity.alta,
+                label: DamageSeverity.alta.nombre,
+                isSelected: _selectedSeverity == DamageSeverity.alta,
+                onTap: () => setState(() => _selectedSeverity = DamageSeverity.alta),
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: _SeverityOption(
-                severity: DamageSeverity.alta,
-                label: 'Alta',
-                isSelected: _selectedSeverity == DamageSeverity.alta,
-                onTap: () => setState(() => _selectedSeverity = DamageSeverity.alta),
+                severity: DamageSeverity.critico,
+                label: DamageSeverity.critico.nombre,
+                isSelected: _selectedSeverity == DamageSeverity.critico,
+                onTap: () => setState(() => _selectedSeverity = DamageSeverity.critico),
               ),
             ),
           ],
@@ -331,32 +434,40 @@ class _DamageDetailSheetState extends State<DamageDetailSheet> {
   }
 
   Widget _buildGuardarButton(BuildContext context) {
+    final enabled = _canGuardar && !_guardando;
     return SizedBox(
       width: double.infinity,
       height: 52,
       child: ElevatedButton(
-        onPressed: _save,
+        onPressed: enabled ? _save : null,
         style: ElevatedButton.styleFrom(
           backgroundColor: RegistroDanosColors.buttonPrimary,
           foregroundColor: Colors.white,
+          disabledBackgroundColor: RegistroDanosColors.textSecondary(context),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.save_outlined, size: 20),
-            const SizedBox(width: 8),
-            Text(
-              'Guardar Punto',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
+        child: _guardando
+            ? const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+              )
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.save_outlined, size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Guardar Punto',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
                   ),
-            ),
-          ],
-        ),
+                ],
+              ),
       ),
     );
   }
@@ -457,6 +568,8 @@ class _SeverityOption extends StatelessWidget {
         return RegistroDanosColors.severityMedia;
       case DamageSeverity.alta:
         return RegistroDanosColors.severityAlta;
+      case DamageSeverity.critico:
+        return const Color(0xFF4A0E1F);
     }
   }
 
@@ -468,6 +581,21 @@ class _SeverityOption extends StatelessWidget {
         return RegistroDanosColors.severityMedia.withValues(alpha: 0.2);
       case DamageSeverity.alta:
         return RegistroDanosColors.severityAlta.withValues(alpha: 0.2);
+      case DamageSeverity.critico:
+        return const Color(0xFF4A0E1F).withValues(alpha: 0.2);
+    }
+  }
+
+  int get _activeDots {
+    switch (severity) {
+      case DamageSeverity.baja:
+        return 1;
+      case DamageSeverity.media:
+        return 2;
+      case DamageSeverity.alta:
+        return 3;
+      case DamageSeverity.critico:
+        return 4;
     }
   }
 
@@ -486,38 +614,22 @@ class _SeverityOption extends StatelessWidget {
           children: [
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: isSelected ? _color : RegistroDanosColors.textSecondary(context),
+              children: List.generate(4, (index) {
+                final active = isSelected && index < _activeDots;
+                return Padding(
+                  padding: EdgeInsets.only(left: index == 0 ? 0 : 4),
+                  child: Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: active
+                          ? _color
+                          : RegistroDanosColors.textSecondary(context).withValues(alpha: 0.3),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 4),
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: severity != DamageSeverity.baja && isSelected
-                        ? _color
-                        : RegistroDanosColors.textSecondary(context).withValues(alpha: 0.3),
-                  ),
-                ),
-                const SizedBox(width: 4),
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: severity == DamageSeverity.alta && isSelected
-                        ? _color
-                        : RegistroDanosColors.textSecondary(context).withValues(alpha: 0.3),
-                  ),
-                ),
-              ],
+                );
+              }),
             ),
             const SizedBox(height: 8),
             Text(

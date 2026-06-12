@@ -3,13 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gradient_slide_to_act/gradient_slide_to_act.dart';
 import 'package:quickalert/quickalert.dart';
 
-import '../../../domain/entities/user_entity.dart';
-import '../../controllers/auth_controller.dart';
+import '../../../core/errors/app_exception.dart';
 import '../../../core/utils/date_format_utils.dart';
-import '../../../data/datasources/remote/placas_validar_remote_datasource.dart';
+import '../../../data/models/informacion_general_response.dart';
 import '../indicadores_testigo/indicadores_testigo_colors.dart';
+import '../mi_turno_provider.dart';
 import '../models/checklist_type.dart';
-import '../placa_validada_provider.dart';
+import '../turno_apertura_provider.dart';
 import '../turno_status_provider.dart';
 import 'resumen_turno_colors.dart';
 
@@ -27,7 +27,23 @@ class ResumenTurnoPage extends ConsumerStatefulWidget {
 
 class _ResumenTurnoPageState extends ConsumerState<ResumenTurnoPage> {
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _cargarInformacionGeneral());
+  }
+
+  void _cargarInformacionGeneral() {
+    final idBitacora = ref.read(turnoAperturaProvider).idBitacoraApertura;
+    if (idBitacora != null) {
+      ref.read(informacionGeneralProvider.notifier).fetch(idBitacora);
+    } else {
+      ref.read(informacionGeneralProvider.notifier).reportMissingBitacora();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final infoAsync = ref.watch(informacionGeneralProvider);
     return Scaffold(
       backgroundColor: ResumenTurnoColors.background(context),
       appBar: AppBar(
@@ -61,21 +77,21 @@ class _ResumenTurnoPageState extends ConsumerState<ResumenTurnoPage> {
                   const SizedBox(height: 24),
                   _buildSectionHeading(context, 'Información General'),
                   const SizedBox(height: 10),
-                  _buildInformacionGeneralCard(context, ref),
+                  _buildInformacionGeneralCard(context, infoAsync),
                   const SizedBox(height: 24),
                   _buildSectionHeading(context, 'Estado del Vehículo'),
                   const SizedBox(height: 10),
-                  _buildEstadoVehiculoCard(context),
+                  _buildEstadoVehiculoCard(context, infoAsync),
                   const SizedBox(height: 24),
                   _buildSectionHeading(context, 'Tiempo y Ubicación'),
                   const SizedBox(height: 10),
                   _buildFechaHoraCard(context),
                   const SizedBox(height: 12),
-                  _buildUbicacionCard(context),
+                  _buildUbicacionCard(context, infoAsync),
                   const SizedBox(height: 24),
                   _buildSectionHeading(context, 'Métricas Iniciales'),
                   const SizedBox(height: 10),
-                  _buildMetricasRow(context),
+                  _buildMetricasSection(context, infoAsync),
                 ],
               ),
             ),
@@ -165,21 +181,30 @@ class _ResumenTurnoPageState extends ConsumerState<ResumenTurnoPage> {
     );
   }
 
-  Widget _buildInformacionGeneralCard(BuildContext context, WidgetRef ref) {
-    final placaResult = ref.watch(placaValidadaProvider);
-    final authState = ref.watch(authControllerProvider);
-    final user = authState.user;
-
-    final bool hasVehiculo = placaResult != null && placaResult.registered;
-    final String vehiculoTitle = hasVehiculo
-        ? _vehiculoTitle(placaResult!)
-        : 'Nissan Versa - 2023';
-    final String vehiculoSubtitle = hasVehiculo
-        ? 'Placa: ${placaResult!.placa ?? '—'}'
-        : 'Placas: A-123-BC';
-
-    final String operadorTitle = _operadorTitle(user);
-    const String operadorId = 'ID: OP-4592';
+  Widget _buildInformacionGeneralCard(
+    BuildContext context,
+    AsyncValue<InformacionGeneralResponse> infoAsync,
+  ) {
+    final vehiculoTitle = infoAsync.when(
+      data: (d) => d.informacionGeneral.vehiculo.titulo ?? 'No disponible',
+      loading: () => 'Cargando...',
+      error: (_, __) => 'No disponible',
+    );
+    final vehiculoSubtitle = infoAsync.when(
+      data: (d) => d.informacionGeneral.vehiculo.subtitulo ?? '—',
+      loading: () => '—',
+      error: (_, __) => '—',
+    );
+    final operadorTitle = infoAsync.when(
+      data: (d) => d.informacionGeneral.operador.nombre ?? 'No disponible',
+      loading: () => 'Cargando...',
+      error: (_, __) => 'No disponible',
+    );
+    final operadorId = infoAsync.when(
+      data: (d) => d.informacionGeneral.operador.id ?? '—',
+      loading: () => '—',
+      error: (_, __) => '—',
+    );
 
     return Container(
       width: double.infinity,
@@ -201,35 +226,10 @@ class _ResumenTurnoPageState extends ConsumerState<ResumenTurnoPage> {
     );
   }
 
-  static String _vehiculoTitle(PlacasValidarResult r) {
-    final marca = r.marca ?? '';
-    final modelo = r.modelo ?? '';
-    final anio = r.anio?.toString() ?? '';
-    final parts = [marca, modelo].where((s) => s.isNotEmpty);
-    if (parts.isEmpty) return anio.isNotEmpty ? '— $anio' : '—';
-    final base = parts.join(' ');
-    return anio.isNotEmpty ? '$base - $anio' : base;
-  }
-
-  static String _operadorTitle(UserEntity? user) {
-    if (user == null) return 'Juan Pérez García';
-    final name = user.name;
-    final p = user.apellidoPaterno ?? '';
-    final m = user.apellidoMaterno ?? '';
-    final apellidos = [p, m].where((s) => s.isNotEmpty).join(' ');
-    return apellidos.isEmpty ? name : '$name $apellidos';
-  }
-
-  Widget _buildEstadoVehiculoCard(BuildContext context) {
-    const items = [
-      ('Estado de la carrocería', 'Bueno'),
-      ('Estado de indicadores', 'Bueno'),
-      ('Nivel de Gasolina', '95 %'),
-      ('Estado de las Luces', 'Bueno'),
-      ('Estado de accesorios', 'Bueno'),
-      ('Documentación', 'En regla'),
-    ];
-
+  Widget _buildEstadoVehiculoCard(
+    BuildContext context,
+    AsyncValue<InformacionGeneralResponse> infoAsync,
+  ) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
@@ -237,27 +237,61 @@ class _ResumenTurnoPageState extends ConsumerState<ResumenTurnoPage> {
         color: ResumenTurnoColors.cardBackground(context),
         borderRadius: BorderRadius.circular(16),
       ),
-      child: Column(
-        children: [
-          for (int i = 0; i < items.length; i++) ...[
-            _buildEstadoVehiculoRow(
-              context,
-              label: items[i].$1,
-              value: items[i].$2,
-            ),
-            if (i < items.length - 1)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                child: Divider(
-                  color: ResumenTurnoColors.textSecondary(context).withValues(alpha: 0.4),
-                  height: 1,
-                  thickness: 1,
+      child: infoAsync.when(
+        data: (data) {
+          final items = data.informacionGeneral.estadoVehiculo;
+          if (items.isEmpty) {
+            return Text(
+              'No disponible',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: ResumenTurnoColors.textSecondary(context),
+                  ),
+            );
+          }
+          return Column(
+            children: [
+              for (int i = 0; i < items.length; i++) ...[
+                _buildEstadoVehiculoRow(
+                  context,
+                  label: items[i].etiqueta ?? '—',
+                  value: items[i].valor ?? '—',
                 ),
+                if (i < items.length - 1)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    child: Divider(
+                      color: ResumenTurnoColors.textSecondary(context).withValues(alpha: 0.4),
+                      height: 1,
+                      thickness: 1,
+                    ),
+                  ),
+              ],
+            ],
+          );
+        },
+        loading: () => const Center(
+          child: Padding(
+            padding: EdgeInsets.all(16),
+            child: CircularProgressIndicator(strokeWidth: 2.5),
+          ),
+        ),
+        error: (e, _) => Text(
+          _mensajeError(e),
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: ResumenTurnoColors.textSecondary(context),
               ),
-          ],
-        ],
+        ),
       ),
     );
+  }
+
+  String _mensajeError(Object error) {
+    if (error is AuthException) return error.message;
+    if (error is NetworkException) {
+      if (error.code == '404') return 'Bitácora no encontrada.';
+      return error.message;
+    }
+    return 'No se pudo cargar la información.';
   }
 
   Widget _buildEstadoVehiculoRow(BuildContext context, {required String label, required String value}) {
@@ -375,7 +409,19 @@ class _ResumenTurnoPageState extends ConsumerState<ResumenTurnoPage> {
     );
   }
 
-  Widget _buildUbicacionCard(BuildContext context) {
+  Widget _buildUbicacionCard(
+    BuildContext context,
+    AsyncValue<InformacionGeneralResponse> infoAsync,
+  ) {
+    final ubicacion = infoAsync.when(
+      data: (d) => d.informacionGeneral.ubicacion,
+      loading: () => null,
+      error: (_, __) => null,
+    );
+    final ubicacionTexto = infoAsync.isLoading
+        ? 'Cargando...'
+        : (ubicacion?.isNotEmpty == true ? ubicacion! : 'No disponible');
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
@@ -411,18 +457,10 @@ class _ResumenTurnoPageState extends ConsumerState<ResumenTurnoPage> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Av. Revolución 123, Col. Centro, Tlaxcala, México',
+                  ubicacionTexto,
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
                         color: ResumenTurnoColors.textPrimary(context),
                         fontWeight: FontWeight.bold,
-                      ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Precisión: 5m',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: ResumenTurnoColors.accentGreen,
-                        fontWeight: FontWeight.w600,
                       ),
                 ),
               ],
@@ -433,28 +471,77 @@ class _ResumenTurnoPageState extends ConsumerState<ResumenTurnoPage> {
     );
   }
 
-  Widget _buildMetricasRow(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: _buildMetricaCard(
-            context,
-            icon: Icons.speed,
-            label: 'Odómetro',
-            value: '142.593 km',
-          ),
+  Widget _buildMetricasSection(
+    BuildContext context,
+    AsyncValue<InformacionGeneralResponse> infoAsync,
+  ) {
+    return infoAsync.when(
+      data: (data) {
+        final items = data.informacionGeneral.metricasIniciales;
+        if (items.isEmpty) {
+          return Text(
+            'No disponible',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: ResumenTurnoColors.textSecondary(context),
+                ),
+          );
+        }
+        final rows = <Widget>[];
+        for (int i = 0; i < items.length; i += 2) {
+          rows.add(
+            Row(
+              children: [
+                Expanded(
+                  child: _buildMetricaCard(
+                    context,
+                    icon: _iconForMetrica(items[i].etiqueta),
+                    label: items[i].etiqueta ?? '—',
+                    value: items[i].valor ?? '—',
+                  ),
+                ),
+                if (i + 1 < items.length) ...[
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildMetricaCard(
+                      context,
+                      icon: _iconForMetrica(items[i + 1].etiqueta),
+                      label: items[i + 1].etiqueta ?? '—',
+                      value: items[i + 1].valor ?? '—',
+                    ),
+                  ),
+                ] else
+                  const Expanded(child: SizedBox()),
+              ],
+            ),
+          );
+          if (i + 2 < items.length) {
+            rows.add(const SizedBox(height: 12));
+          }
+        }
+        return Column(children: rows);
+      },
+      loading: () => const Center(
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: CircularProgressIndicator(strokeWidth: 2.5),
         ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _buildMetricaCard(
-            context,
-            icon: Icons.local_gas_station_outlined,
-            label: 'Litros Cargados',
-            value: '45.50 LTS',
-          ),
-        ),
-      ],
+      ),
+      error: (e, _) => Text(
+        _mensajeError(e),
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: ResumenTurnoColors.textSecondary(context),
+            ),
+      ),
     );
+  }
+
+  IconData _iconForMetrica(String? etiqueta) {
+    final e = (etiqueta ?? '').toLowerCase();
+    if (e.contains('odómetro') || e.contains('odometro')) return Icons.speed;
+    if (e.contains('litro') || e.contains('gasolina') || e.contains('combustible')) {
+      return Icons.local_gas_station_outlined;
+    }
+    return Icons.analytics_outlined;
   }
 
   Widget _buildMetricaCard(

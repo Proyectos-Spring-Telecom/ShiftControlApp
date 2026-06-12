@@ -92,6 +92,7 @@ class _RegistroDanosPageState extends State<RegistroDanosPage> {
         ),
         child: DamageDetailSheet(
           point: point,
+          checklistType: widget.checklistType,
           onSave: (detail) => _saveDamage(point, detail),
         ),
       ),
@@ -125,16 +126,7 @@ class _RegistroDanosPageState extends State<RegistroDanosPage> {
     }
   }
 
-  String _getDamageTypeLabel(DamageType type) {
-    switch (type) {
-      case DamageType.abolladura:
-        return 'Abolladura';
-      case DamageType.rayon:
-        return 'Rayón';
-      case DamageType.rotura:
-        return 'Rotura';
-    }
-  }
+  String _getDamageTypeLabel(DamageType type) => type.nombre;
 
   @override
   Widget build(BuildContext context) {

@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/errors/app_exception.dart';
+import '../../../data/models/registrar_niveles_fluidos_request.dart';
+import '../mi_turno_provider.dart';
 import '../models/checklist_type.dart';
+import '../turno_apertura_provider.dart';
 import 'niveles_fluido_colors.dart';
 
-class NivelesFluidoPage extends StatefulWidget {
+class NivelesFluidoPage extends ConsumerStatefulWidget {
   const NivelesFluidoPage({
     super.key,
     this.onContinuar,
@@ -14,22 +19,86 @@ class NivelesFluidoPage extends StatefulWidget {
   final ChecklistType checklistType;
 
   @override
-  State<NivelesFluidoPage> createState() => _NivelesFluidoPageState();
+  ConsumerState<NivelesFluidoPage> createState() => _NivelesFluidoPageState();
 }
 
-class _NivelesFluidoPageState extends State<NivelesFluidoPage> {
+class _NivelesFluidoPageState extends ConsumerState<NivelesFluidoPage> {
+  bool _guardandoNiveles = false;
+
   final Map<String, double> _niveles = {
-    'gasolina': 1.0,
-    'aceite': 0.65,
-    'electrolito': 0.35,
-    'anticongelante': 0.75,
-    'liquido_frenos': 0.95,
+    'gasolina': 0.5,
+    'aceite': 0.5,
+    'electrolito': 0.5,
+    'anticongelante': 0.5,
+    'liquido_frenos': 0.5,
   };
 
   void _updateNivel(String key, double value) {
     setState(() {
       _niveles[key] = value;
     });
+  }
+
+  Future<void> _continuar() async {
+    if (widget.checklistType != ChecklistType.apertura) {
+      _navegarSiguiente();
+      return;
+    }
+
+    final idBitacora = ref.read(turnoAperturaProvider).idBitacoraApertura;
+    if (idBitacora == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No hay bitácora de apertura. Completa el paso anterior.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _guardandoNiveles = true);
+
+    try {
+      final request = RegistrarNivelesFluidosRequest.fromNivelesUi(
+        idBitacoraVehiculo: idBitacora,
+        nivelesUi: _niveles,
+      );
+
+      await ref.read(turnosServiceProvider).registrarNivelesFluidos(request);
+
+      if (!mounted) return;
+      setState(() => _guardandoNiveles = false);
+      _navegarSiguiente();
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      setState(() => _guardandoNiveles = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message), backgroundColor: Colors.red),
+      );
+    } on NetworkException catch (e) {
+      if (!mounted) return;
+      setState(() => _guardandoNiveles = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message), backgroundColor: Colors.red),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _guardandoNiveles = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al registrar niveles de fluidos: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void _navegarSiguiente() {
+    if (widget.onContinuar != null) {
+      widget.onContinuar!();
+    } else {
+      Navigator.of(context).pop();
+    }
   }
 
   @override
@@ -176,34 +245,35 @@ class _NivelesFluidoPageState extends State<NivelesFluidoPage> {
         width: double.infinity,
         height: 52,
         child: ElevatedButton(
-          onPressed: () {
-            if (widget.onContinuar != null) {
-              widget.onContinuar!();
-            } else {
-              Navigator.of(context).pop();
-            }
-          },
+          onPressed: _guardandoNiveles ? null : _continuar,
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF001C6A),
             foregroundColor: Colors.white,
+            disabledBackgroundColor: NivelesFluidoColors.textSecondary(context),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
             ),
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                'Continuar',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
+          child: _guardandoNiveles
+              ? const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                )
+              : Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'Continuar',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
                     ),
-              ),
-              const SizedBox(width: 8),
-              const Icon(Icons.arrow_forward, size: 20),
-            ],
-          ),
+                    const SizedBox(width: 8),
+                    const Icon(Icons.arrow_forward, size: 20),
+                  ],
+                ),
         ),
       ),
     );

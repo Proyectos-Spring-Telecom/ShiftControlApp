@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/errors/app_exception.dart';
+import '../../../data/models/registrar_testigos_request.dart';
+import '../mi_turno_provider.dart';
 import '../models/checklist_type.dart';
+import '../turno_apertura_provider.dart';
 import 'indicadores_testigo_colors.dart';
 
-class IndicadoresTestigoPage extends StatefulWidget {
+class IndicadoresTestigoPage extends ConsumerStatefulWidget {
   const IndicadoresTestigoPage({
     super.key,
     this.onContinuar,
@@ -14,11 +19,12 @@ class IndicadoresTestigoPage extends StatefulWidget {
   final ChecklistType checklistType;
 
   @override
-  State<IndicadoresTestigoPage> createState() => _IndicadoresTestigoPageState();
+  ConsumerState<IndicadoresTestigoPage> createState() => _IndicadoresTestigoPageState();
 }
 
-class _IndicadoresTestigoPageState extends State<IndicadoresTestigoPage> {
+class _IndicadoresTestigoPageState extends ConsumerState<IndicadoresTestigoPage> {
   final Set<String> _selectedIndicators = {};
+  bool _guardandoTestigos = false;
 
   final List<_IndicadorData> _indicadores = [
     _IndicadorData(id: 'abs', label: 'Frenos ABS', icon: Icons.album_outlined),
@@ -43,6 +49,68 @@ class _IndicadoresTestigoPageState extends State<IndicadoresTestigoPage> {
         _selectedIndicators.add(id);
       }
     });
+  }
+
+  Future<void> _continuar() async {
+    if (widget.checklistType != ChecklistType.apertura) {
+      _navegarSiguiente();
+      return;
+    }
+
+    final idBitacora = ref.read(turnoAperturaProvider).idBitacoraApertura;
+    if (idBitacora == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No hay bitácora de apertura. Completa el paso anterior.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _guardandoTestigos = true);
+
+    try {
+      final request = RegistrarTestigosRequest.fromSeleccion(
+        idBitacoraVehiculo: idBitacora,
+        selectedUiIds: _selectedIndicators,
+      );
+
+      await ref.read(turnosServiceProvider).registrarTestigos(request);
+
+      if (!mounted) return;
+      setState(() => _guardandoTestigos = false);
+      _navegarSiguiente();
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      setState(() => _guardandoTestigos = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message), backgroundColor: Colors.red),
+      );
+    } on NetworkException catch (e) {
+      if (!mounted) return;
+      setState(() => _guardandoTestigos = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message), backgroundColor: Colors.red),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _guardandoTestigos = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al registrar testigos: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void _navegarSiguiente() {
+    if (widget.onContinuar != null) {
+      widget.onContinuar!();
+    } else {
+      Navigator.of(context).pop();
+    }
   }
 
   @override
@@ -180,34 +248,35 @@ class _IndicadoresTestigoPageState extends State<IndicadoresTestigoPage> {
         width: double.infinity,
         height: 52,
         child: ElevatedButton(
-          onPressed: () {
-            if (widget.onContinuar != null) {
-              widget.onContinuar!();
-            } else {
-              Navigator.of(context).pop();
-            }
-          },
+          onPressed: _guardandoTestigos ? null : _continuar,
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF001C6A),
             foregroundColor: Colors.white,
+            disabledBackgroundColor: IndicadoresTestigoColors.textSecondary(context),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
             ),
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                'Continuar',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
+          child: _guardandoTestigos
+              ? const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                )
+              : Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'Continuar',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
                     ),
-              ),
-              const SizedBox(width: 8),
-              const Icon(Icons.arrow_forward, size: 20),
-            ],
-          ),
+                    const SizedBox(width: 8),
+                    const Icon(Icons.arrow_forward, size: 20),
+                  ],
+                ),
         ),
       ),
     );

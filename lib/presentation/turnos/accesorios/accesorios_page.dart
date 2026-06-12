@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/errors/app_exception.dart';
+import '../../../data/models/registrar_accesorios_vehiculo_request.dart';
+import '../mi_turno_provider.dart';
 import '../models/checklist_type.dart';
+import '../turno_apertura_provider.dart';
 import 'accesorios_colors.dart';
 
-class AccesoriosPage extends StatefulWidget {
+class AccesoriosPage extends ConsumerStatefulWidget {
   const AccesoriosPage({
     super.key,
     this.onContinuar,
@@ -14,12 +19,14 @@ class AccesoriosPage extends StatefulWidget {
   final ChecklistType checklistType;
 
   @override
-  State<AccesoriosPage> createState() => _AccesoriosPageState();
+  ConsumerState<AccesoriosPage> createState() => _AccesoriosPageState();
 }
 
-class _AccesoriosPageState extends State<AccesoriosPage> {
+class _AccesoriosPageState extends ConsumerState<AccesoriosPage> {
+  bool _guardandoAccesorios = false;
+
   final Map<String, bool> _accesoriosEstado = {
-    'limpiadores': false,
+    'limpiadores': true,
     'aguas': true,
     'extintor': true,
     'triangulos': true,
@@ -28,13 +35,75 @@ class _AccesoriosPageState extends State<AccesoriosPage> {
     'gato': true,
     'herramientas': true,
     'llanta_refaccion': true,
-    'impermeable': false,
+    'impermeable': true,
   };
 
   void _toggleAccesorio(String key) {
     setState(() {
       _accesoriosEstado[key] = !_accesoriosEstado[key]!;
     });
+  }
+
+  Future<void> _continuar() async {
+    if (widget.checklistType != ChecklistType.apertura) {
+      _navegarSiguiente();
+      return;
+    }
+
+    final idBitacora = ref.read(turnoAperturaProvider).idBitacoraApertura;
+    if (idBitacora == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No hay bitácora de apertura. Completa el paso anterior.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _guardandoAccesorios = true);
+
+    try {
+      final request = RegistrarAccesoriosVehiculoRequest.fromEstadoUi(
+        idBitacoraVehiculo: idBitacora,
+        accesoriosUi: _accesoriosEstado,
+      );
+
+      await ref.read(turnosServiceProvider).registrarAccesoriosVehiculo(request);
+
+      if (!mounted) return;
+      setState(() => _guardandoAccesorios = false);
+      _navegarSiguiente();
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      setState(() => _guardandoAccesorios = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message), backgroundColor: Colors.red),
+      );
+    } on NetworkException catch (e) {
+      if (!mounted) return;
+      setState(() => _guardandoAccesorios = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message), backgroundColor: Colors.red),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _guardandoAccesorios = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al registrar accesorios: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void _navegarSiguiente() {
+    if (widget.onContinuar != null) {
+      widget.onContinuar!();
+    } else {
+      Navigator.of(context).pop();
+    }
   }
 
   @override
@@ -256,34 +325,35 @@ class _AccesoriosPageState extends State<AccesoriosPage> {
         width: double.infinity,
         height: 52,
         child: ElevatedButton(
-          onPressed: () {
-            if (widget.onContinuar != null) {
-              widget.onContinuar!();
-            } else {
-              Navigator.of(context).pop();
-            }
-          },
+          onPressed: _guardandoAccesorios ? null : _continuar,
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF001C6A),
             foregroundColor: Colors.white,
+            disabledBackgroundColor: AccesoriosColors.textSecondary(context),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
             ),
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                'Continuar',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
+          child: _guardandoAccesorios
+              ? const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                )
+              : Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'Continuar',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
                     ),
-              ),
-              const SizedBox(width: 8),
-              const Icon(Icons.arrow_forward, size: 20),
-            ],
-          ),
+                    const SizedBox(width: 8),
+                    const Icon(Icons.arrow_forward, size: 20),
+                  ],
+                ),
         ),
       ),
     );

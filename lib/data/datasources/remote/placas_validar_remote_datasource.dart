@@ -28,7 +28,7 @@ class PlacasValidarResult {
   final String? economico;
 }
 
-/// Fuente de datos remota para validación de placa (API BehaviorIQ).
+/// Fuente de datos remota para validación de placa (ShiftControl BFF).
 abstract interface class PlacasValidarRemoteDatasource {
   Future<PlacasValidarResult> validar(
     String token,
@@ -42,7 +42,7 @@ abstract interface class PlacasValidarRemoteDatasource {
 
 class PlacasValidarRemoteDatasourceImpl implements PlacasValidarRemoteDatasource {
   PlacasValidarRemoteDatasourceImpl({String? baseUrl})
-      : _baseUrl = baseUrl ?? AppEnvironmentConfig.faceAuthBaseUrl;
+      : _baseUrl = baseUrl ?? AppEnvironmentConfig.baseUrl;
 
   final String _baseUrl;
 
@@ -55,15 +55,10 @@ class PlacasValidarRemoteDatasourceImpl implements PlacasValidarRemoteDatasource
     double? latitud,
     double? longitud,
   }) async {
-    final queryParams = <String, String>{
-      'numeroPlaca': numeroPlaca,
-    };
-    if (idCliente != null) queryParams['idCliente'] = idCliente.toString();
-    if (idSolucion != null) queryParams['idSolucion'] = idSolucion.toString();
-    if (latitud != null) queryParams['latitud'] = latitud.toString();
-    if (longitud != null) queryParams['longitud'] = longitud.toString();
-
-    final uri = Uri.parse('$_baseUrl/placas/validar').replace(queryParameters: queryParams);
+    final base = _baseUrl.endsWith('/') ? _baseUrl : '$_baseUrl/';
+    final uri = Uri.parse('${base}api/placas/validar').replace(
+      queryParameters: {'numeroPlaca': numeroPlaca},
+    );
     final response = await http.get(
       uri,
       headers: {
@@ -89,8 +84,8 @@ class PlacasValidarRemoteDatasourceImpl implements PlacasValidarRemoteDatasource
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     final registered = data['registered'] as bool? ?? false;
-    final idPlaca = data['idPlaca'] is int ? data['idPlaca'] as int : null;
-    final anio = data['anio'] is int ? data['anio'] as int : null;
+    final idPlaca = (data['idPlaca'] as num?)?.toInt();
+    final anio = (data['anio'] as num?)?.toInt();
     return PlacasValidarResult(
       registered: registered,
       idPlaca: idPlaca,

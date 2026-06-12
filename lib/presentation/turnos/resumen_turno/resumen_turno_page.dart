@@ -7,9 +7,13 @@ import '../../../core/errors/app_exception.dart';
 import '../../../core/utils/date_format_utils.dart';
 import '../../../data/models/informacion_general_response.dart';
 import '../indicadores_testigo/indicadores_testigo_colors.dart';
+import '../checklist_apertura_navigation.dart';
+import '../checklist_progress_provider.dart';
 import '../mi_turno_provider.dart';
 import '../models/checklist_type.dart';
 import '../turno_apertura_provider.dart';
+import '../turno_bitacora_helper.dart';
+import '../turno_cierre_provider.dart';
 import '../turno_status_provider.dart';
 import 'resumen_turno_colors.dart';
 
@@ -29,11 +33,19 @@ class _ResumenTurnoPageState extends ConsumerState<ResumenTurnoPage> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _cargarInformacionGeneral());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (widget.checklistType == ChecklistType.apertura) {
+        ref
+            .read(checklistProgressServiceProvider)
+            .actualizarPaso(ChecklistAperturaPasos.resumen);
+      }
+      _cargarInformacionGeneral();
+    });
   }
 
   void _cargarInformacionGeneral() {
-    final idBitacora = ref.read(turnoAperturaProvider).idBitacoraApertura;
+    final idBitacora =
+        idBitacoraVehiculoParaChecklist(ref, widget.checklistType);
     if (idBitacora != null) {
       ref.read(informacionGeneralProvider.notifier).fetch(idBitacora);
     } else {
@@ -625,29 +637,100 @@ class _ResumenTurnoPageState extends ConsumerState<ResumenTurnoPage> {
                 ) ?? const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
             backgroundColor: ResumenTurnoColors.cardBackground(context),
             onSubmit: () async {
-              ref.read(turnoStatusProvider.notifier).state =
-                  isApertura ? TurnoStatus.enTurno : TurnoStatus.turnoCerrado;
               if (!context.mounted) return;
               final navigator = Navigator.of(context);
+
               if (isApertura) {
+                final idBitacora =
+                    ref.read(turnoAperturaProvider).idBitacoraApertura;
+                if (idBitacora == null) {
+                  await QuickAlert.show(
+                    context: context,
+                    type: QuickAlertType.error,
+                    title: 'Error',
+                    text:
+                        'No hay bitácora de apertura. Completa el flujo de apertura.',
+                    confirmBtnText: 'Aceptar',
+                  );
+                  return;
+                }
+
+                try {
+                  await ref.read(turnosServiceProvider).cerrarBitacoraApertura(
+                        idBitacoraVehiculo: idBitacora,
+                      );
+                } on AuthException catch (e) {
+                  if (!context.mounted) return;
+                  await QuickAlert.show(
+                    context: context,
+                    type: QuickAlertType.error,
+                    title: 'Error',
+                    text: e.message,
+                    confirmBtnText: 'Aceptar',
+                  );
+                  return;
+                } on NetworkException catch (e) {
+                  if (!context.mounted) return;
+                  await QuickAlert.show(
+                    context: context,
+                    type: QuickAlertType.error,
+                    title: 'Error',
+                    text: e.message,
+                    confirmBtnText: 'Aceptar',
+                  );
+                  return;
+                } catch (e) {
+                  if (!context.mounted) return;
+                  await QuickAlert.show(
+                    context: context,
+                    type: QuickAlertType.error,
+                    title: 'Error',
+                    text: 'No fue posible cerrar la bitácora. Intenta nuevamente.',
+                    confirmBtnText: 'Aceptar',
+                  );
+                  return;
+                }
+
+                await ref.read(checklistProgressServiceProvider).limpiar();
+                ref.read(turnoAperturaProvider.notifier).state =
+                    const TurnoAperturaState();
+                ref.read(turnoStatusProvider.notifier).state = TurnoStatus.enTurno;
+
+                if (!context.mounted) return;
                 await QuickAlert.show(
                   context: context,
                   type: QuickAlertType.success,
                   title: 'Turno Iniciado',
-                  text: 'El turno se ha iniciado y el registro se guardó de manera exitosa.',
+                  text:
+                      'El turno se ha iniciado y el registro se guardó de manera exitosa.',
                   confirmBtnText: 'Aceptar',
                 );
               } else {
+                await ref.read(checklistProgressServiceProvider).limpiar();
+                ref.read(turnoAperturaProvider.notifier).state =
+                    const TurnoAperturaState();
+                ref.read(turnoCierreProvider.notifier).state =
+                    const TurnoCierreState();
+                ref.read(turnoStatusProvider.notifier).state =
+                    TurnoStatus.turnoCerrado;
+
+                if (!context.mounted) return;
                 await QuickAlert.show(
                   context: context,
                   type: QuickAlertType.success,
                   title: 'Turno Cerrado',
-                  text: 'El turno se ha cerrado y el registro se guardó de manera exitosa.',
+                  text:
+                      'El turno se ha cerrado y el registro se guardó de manera exitosa.',
                   confirmBtnText: 'Aceptar',
                 );
               }
+
               if (context.mounted) {
-                navigator.popUntil((route) => route.isFirst);
+                ref.invalidate(miTurnoActivoProvider);
+                await ref.read(miTurnoActivoProvider.notifier).fetch();
+                if (context.mounted) {
+                  navigator.popUntil((route) => route.isFirst);
+                }
               }
             },
             gradient: LinearGradient(

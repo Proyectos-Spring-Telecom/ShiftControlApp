@@ -86,6 +86,18 @@ class AuthLocalDatasourceImpl implements AuthLocalDatasource {
       await _prefs.remove(AppConstants.keyUserUserName);
       await _prefs.remove(AppConstants.keyUserFotoPerfil);
       await _prefs.setBool(AppConstants.keyIsLoggedIn, false);
+      await _prefs.remove(AppConstants.keyChecklistIdTurno);
+      await _prefs.remove(AppConstants.keyChecklistIdBitacoraApertura);
+      await _prefs.remove(AppConstants.keyChecklistPasoActual);
+      await _prefs.remove(AppConstants.keyChecklistCompleto);
+      await _prefs.remove(AppConstants.keyChecklistPlaca);
+      await _prefs.remove(AppConstants.keyChecklistNumeroEconomico);
+      await _prefs.remove(AppConstants.keyChecklistModeloNombre);
+      await _prefs.remove(AppConstants.keyChecklistMarcaNombre);
+      await _prefs.remove(AppConstants.keyChecklistAnio);
+      await _prefs.remove(AppConstants.keyChecklistIdBitacoraCierre);
+      await _prefs.remove(AppConstants.keyChecklistDuracionCierre);
+      await _prefs.remove(AppConstants.keyChecklistEsCierre);
     } catch (e) {
       throw StorageException('Error al cerrar sesión: $e');
     }

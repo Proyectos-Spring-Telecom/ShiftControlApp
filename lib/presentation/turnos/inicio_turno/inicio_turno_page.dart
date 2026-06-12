@@ -20,7 +20,9 @@ import '../captura_odometro/captura_odometro_colors.dart';
 import '../identificar_placa/identificar_placa_page.dart';
 import '../mi_turno_provider.dart';
 import '../placa_validada_provider.dart';
+import '../checklist_progress_provider.dart';
 import '../turno_apertura_provider.dart';
+import '../turno_cierre_provider.dart';
 
 class InicioTurnoPage extends ConsumerStatefulWidget {
   const InicioTurnoPage({
@@ -243,6 +245,16 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
         marcaNombre: response.marcaNombre,
       );
 
+      await ref.read(checklistProgressServiceProvider).guardarInicio(
+            idTurno: response.idTurno,
+            idBitacoraApertura: response.idBitacoraApertura,
+            placa: response.placa,
+            numeroEconomico: response.numeroEconomico,
+            modeloNombre: response.modeloNombre,
+            marcaNombre: response.marcaNombre,
+            anio: response.anio,
+          );
+
       debugPrint(
         'Turno creado: idTurno=${response.idTurno}, idBitacoraApertura=${response.idBitacoraApertura}',
       );
@@ -273,6 +285,124 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
       setState(() => _creandoTurno = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error al crear turno: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  int? _obtenerIdTurnoParaCierre() {
+    final desdeApertura = ref.read(turnoAperturaProvider).idTurno;
+    if (desdeApertura != null) return desdeApertura;
+    return ref.read(miTurnoActivoProvider).valueOrNull?.idTurno;
+  }
+
+  Future<void> _cerrarTurnoYContinuar() async {
+    if (_fotoResguardo == null || _fotoResguardo!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Toma la fotografía de resguardo antes de continuar.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final idTurno = _obtenerIdTurnoParaCierre();
+    if (idTurno == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No hay turno activo. Verifica tu sesión.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _creandoTurno = true);
+
+    var position = _cachedPosition;
+    if (position == null) {
+      position = await _obtenerUbicacion();
+      if (position != null) _cachedPosition = position;
+    }
+    if (position == null) {
+      if (mounted) setState(() => _creandoTurno = false);
+      return;
+    }
+
+    try {
+      final response = await ref.read(turnosServiceProvider).cerrarTurno(
+            idTurno: idTurno,
+            latitud: position.latitude,
+            longitud: position.longitude,
+            evidenciaCierreBytes: _fotoResguardo!,
+          );
+
+      final idBitacoraCierre = response.idBitacoraCierre;
+      final duracion = response.duracion;
+      if (idBitacoraCierre == null || duracion == null) {
+        throw const NetworkException('No fue posible cerrar el turno', '500');
+      }
+
+      if (!mounted) return;
+      setState(() => _creandoTurno = false);
+
+      ref.read(turnoCierreProvider.notifier).state = TurnoCierreState(
+        idTurno: idTurno,
+        idBitacoraCierre: idBitacoraCierre,
+        duracion: duracion,
+      );
+
+      await ref.read(checklistProgressServiceProvider).guardarCierreGeografico(
+            idTurno: idTurno,
+            idBitacoraCierre: idBitacoraCierre,
+            duracion: duracion,
+          );
+
+      debugPrint(
+        'Turno cerrado geográficamente: idTurno=$idTurno, '
+        'idBitacoraCierre=$idBitacoraCierre, duracion=$duracion',
+      );
+
+      if (widget.onSiguienteTap != null) {
+        widget.onSiguienteTap!();
+      } else {
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => const CapturaOdometroPage(
+              checklistType: ChecklistType.cierre,
+            ),
+          ),
+        );
+      }
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      setState(() => _creandoTurno = false);
+      final mensaje = switch (e.code) {
+        '401' => 'Sesión expirada',
+        '403' => 'Acceso denegado',
+        _ => e.message,
+      };
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(mensaje), backgroundColor: Colors.red),
+      );
+    } on NetworkException catch (e) {
+      if (!mounted) return;
+      setState(() => _creandoTurno = false);
+      final mensaje = switch (e.code) {
+        '404' => 'Turno no encontrado',
+        _ => e.message.isNotEmpty ? e.message : 'No fue posible cerrar el turno',
+      };
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(mensaje), backgroundColor: Colors.red),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _creandoTurno = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No fue posible cerrar el turno'),
+          backgroundColor: Colors.red,
+        ),
       );
     }
   }
@@ -643,9 +773,9 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
 
   Widget _buildSiguienteButton(BuildContext context) {
     final isApertura = widget.checklistType == ChecklistType.apertura;
-    // En Apertura: habilitar solo cuando la placa esté registrada y tengamos datos del vehículo.
-    final canContinue = !isApertura ||
-        (_placaValidarResult != null && _placaValidarResult!.registered);
+    final canContinue = isApertura
+        ? (_placaValidarResult != null && _placaValidarResult!.registered)
+        : (_fotoResguardo != null && _fotoResguardo!.isNotEmpty);
 
     return SafeArea(
       child: Padding(
@@ -659,15 +789,7 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
                     if (widget.checklistType == ChecklistType.apertura) {
                       _crearTurnoYContinuar();
                     } else {
-                      if (widget.onSiguienteTap != null) {
-                        widget.onSiguienteTap!();
-                      } else {
-                        Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => const CapturaOdometroPage(),
-                          ),
-                        );
-                      }
+                      _cerrarTurnoYContinuar();
                     }
                   }
                 : null,
@@ -691,7 +813,7 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
                       ),
                       const SizedBox(width: 10),
                       Text(
-                        'Creando turno...',
+                        isApertura ? 'Creando turno...' : 'Cerrando turno...',
                         style: Theme.of(context).textTheme.titleMedium?.copyWith(
                               fontWeight: FontWeight.bold,
                               color: Colors.white,

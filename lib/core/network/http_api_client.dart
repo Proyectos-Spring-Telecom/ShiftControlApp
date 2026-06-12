@@ -99,7 +99,19 @@ class HttpApiClient implements ApiClient {
       final json = jsonDecode(body) as Map<String, dynamic>?;
       if (json == null) return null;
       final msg = json['message'] ?? json['error'] ?? json['msg'];
-      return msg is String ? msg : null;
+      String? base;
+      if (msg is String) {
+        base = msg;
+      } else if (msg is List) {
+        base = msg.join('\n');
+      }
+      final campos = json['camposFaltantes'];
+      if (campos is List && campos.isNotEmpty) {
+        final lista = campos.map((e) => e.toString()).join('\n• ');
+        final prefix = base != null ? '$base\n\n' : '';
+        return '${prefix}Campos faltantes:\n• $lista';
+      }
+      return base;
     } catch (_) {
       return null;
     }

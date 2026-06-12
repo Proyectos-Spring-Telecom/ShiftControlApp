@@ -9,6 +9,8 @@ import '../../../config/app_environment.dart';
 import '../../../core/auth/token_storage_service.dart';
 import '../../../core/errors/app_exception.dart';
 import '../../../core/network/api_client.dart';
+import '../../../data/models/cerrar_bitacora_response.dart';
+import '../../../data/models/cerrar_turno_response.dart';
 import '../../../data/models/crear_turno_response.dart';
 import '../../../data/models/informacion_general_response.dart';
 import '../../../data/models/mi_turno_activo_response.dart';
@@ -432,13 +434,138 @@ class TurnosService {
     }
   }
 
+  /// Cierre geográfico del turno.
+  /// PATCH /api/turnos (multipart/form-data)
+  Future<CerrarTurnoResponse> cerrarTurno({
+    required int idTurno,
+    required double latitud,
+    required double longitud,
+    required List<int> evidenciaCierreBytes,
+    String filename = 'evidencia_cierre.jpeg',
+  }) async {
+    final token = await _tokenStorage.getToken();
+    if (token == null || token.isEmpty) {
+      throw const AuthException('Sesión expirada. Inicia sesión de nuevo.', '401');
+    }
+
+    final base = AppEnvironmentConfig.baseUrl.endsWith('/')
+        ? AppEnvironmentConfig.baseUrl
+        : '${AppEnvironmentConfig.baseUrl}/';
+    final uri = Uri.parse('${base}api/turnos');
+    final request = http.MultipartRequest('PATCH', uri);
+    request.headers['Accept'] = 'application/json';
+    request.headers['Authorization'] = 'Bearer $token';
+
+    request.fields['idTurno'] = idTurno.toString();
+    request.fields['latitud'] = latitud.toString();
+    request.fields['longitud'] = longitud.toString();
+
+    request.files.add(http.MultipartFile.fromBytes(
+      'evidenciaCierre',
+      Uint8List.fromList(evidenciaCierreBytes),
+      filename: filename,
+      contentType: MediaType('image', 'jpeg'),
+    ));
+
+    debugPrint(
+      'TurnosService: PATCH /api/turnos (multipart) idTurno=$idTurno, '
+      'lat=$latitud, lng=$longitud, foto=${evidenciaCierreBytes.length} bytes',
+    );
+
+    final streamed = await request.send();
+    final response = await http.Response.fromStream(streamed);
+
+    debugPrint('TurnosService: cerrarTurno statusCode=${response.statusCode}');
+
+    if (response.statusCode == 401) {
+      throw const AuthException('Sesión expirada. Inicia sesión de nuevo.', '401');
+    }
+    if (response.statusCode == 403) {
+      throw const AuthException('Acceso denegado.', '403');
+    }
+    if (response.statusCode == 404) {
+      throw const NetworkException('Turno no encontrado.', '404');
+    }
+    if (response.statusCode == 400) {
+      throw AuthException(
+        _parseMessage(response.body) ?? 'Datos inválidos.',
+        '400',
+      );
+    }
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      throw NetworkException(
+        _parseMessage(response.body) ??
+            'No fue posible cerrar el turno (${response.statusCode})',
+        '${response.statusCode}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    debugPrint('TurnosService: turno cerrado geográficamente exitosamente');
+    return CerrarTurnoResponse.fromJson(data);
+  }
+
+  /// Cierra la bitácora de apertura del turno.
+  /// PATCH /api/turnos/bitacora/cierre (application/json)
+  Future<CerrarBitacoraResponse> cerrarBitacoraApertura({
+    required int idBitacoraVehiculo,
+  }) async {
+    debugPrint(
+      'TurnosService: PATCH /api/turnos/bitacora/cierre '
+      'idBitacoraVehiculo=$idBitacoraVehiculo',
+    );
+    try {
+      final data = await _client.patch(
+        '/api/turnos/bitacora/cierre',
+        body: {'idBitacoraVehiculo': idBitacoraVehiculo},
+      );
+      debugPrint('TurnosService: bitácora de apertura cerrada exitosamente');
+      return CerrarBitacoraResponse.fromJson(data);
+    } on AuthException catch (e) {
+      debugPrint(
+        'TurnosService: cerrarBitacoraApertura AuthException ${e.code}: ${e.message}',
+      );
+      if (e.code == '401') {
+        throw const AuthException(
+          'Tu sesión ha expirado. Inicia sesión nuevamente.',
+          '401',
+        );
+      }
+      rethrow;
+    } on NetworkException catch (e) {
+      debugPrint(
+        'TurnosService: cerrarBitacoraApertura NetworkException ${e.code}: ${e.message}',
+      );
+      if (e.code == '404') {
+        throw const NetworkException('Bitácora no encontrada.', '404');
+      }
+      if (e.code == '500') {
+        throw const NetworkException(
+          'No fue posible cerrar la bitácora. Intenta nuevamente.',
+          '500',
+        );
+      }
+      rethrow;
+    }
+  }
+
   String? _parseMessage(String body) {
     try {
       final json = jsonDecode(body) as Map<String, dynamic>?;
       final msg = json?['message'] ?? json?['error'];
-      if (msg is String) return msg;
-      if (msg is List) return msg.join('\n');
-      return null;
+      String? base;
+      if (msg is String) {
+        base = msg;
+      } else if (msg is List) {
+        base = msg.join('\n');
+      }
+      final campos = json?['camposFaltantes'];
+      if (campos is List && campos.isNotEmpty) {
+        final lista = campos.map((e) => e.toString()).join('\n• ');
+        final prefix = base != null ? '$base\n\n' : '';
+        return '${prefix}Campos faltantes:\n• $lista';
+      }
+      return base;
     } catch (_) {
       return null;
     }

@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/errors/app_exception.dart';
 import '../../../data/models/registrar_testigos_request.dart';
+import '../checklist_apertura_navigation.dart';
+import '../checklist_progress_provider.dart';
 import '../mi_turno_provider.dart';
 import '../models/checklist_type.dart';
 import '../turno_apertura_provider.dart';
@@ -25,6 +27,18 @@ class IndicadoresTestigoPage extends ConsumerStatefulWidget {
 class _IndicadoresTestigoPageState extends ConsumerState<IndicadoresTestigoPage> {
   final Set<String> _selectedIndicators = {};
   bool _guardandoTestigos = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.checklistType == ChecklistType.apertura) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ref
+            .read(checklistProgressServiceProvider)
+            .actualizarPaso(ChecklistAperturaPasos.indicadoresTestigo);
+      });
+    }
+  }
 
   final List<_IndicadorData> _indicadores = [
     _IndicadorData(id: 'abs', label: 'Frenos ABS', icon: Icons.album_outlined),

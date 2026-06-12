@@ -24,4 +24,17 @@ abstract final class AppConstants {
   static const String keyLastLoginEmail = 'last_login_email';
 
   static const String keyThemeMode = 'theme_mode';
+
+  static const String keyChecklistIdTurno = 'checklist_id_turno';
+  static const String keyChecklistIdBitacoraApertura = 'checklist_id_bitacora_apertura';
+  static const String keyChecklistPasoActual = 'checklist_paso_actual';
+  static const String keyChecklistCompleto = 'checklist_completo';
+  static const String keyChecklistPlaca = 'checklist_placa';
+  static const String keyChecklistNumeroEconomico = 'checklist_numero_economico';
+  static const String keyChecklistModeloNombre = 'checklist_modelo_nombre';
+  static const String keyChecklistMarcaNombre = 'checklist_marca_nombre';
+  static const String keyChecklistAnio = 'checklist_anio';
+  static const String keyChecklistIdBitacoraCierre = 'checklist_id_bitacora_cierre';
+  static const String keyChecklistDuracionCierre = 'checklist_duracion_cierre';
+  static const String keyChecklistEsCierre = 'checklist_es_cierre';
 }

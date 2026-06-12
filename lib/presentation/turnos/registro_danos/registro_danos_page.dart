@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../checklist_apertura_navigation.dart';
+import '../checklist_progress_provider.dart';
 import '../models/checklist_type.dart';
 import 'models/damage_point_model.dart';
 import 'registro_danos_colors.dart';
 import 'widgets/damage_detail_sheet.dart';
 import 'widgets/vehicle_view_widget.dart';
 
-class RegistroDanosPage extends StatefulWidget {
+class RegistroDanosPage extends ConsumerStatefulWidget {
   const RegistroDanosPage({
     super.key,
     this.checklistType = ChecklistType.apertura,
@@ -17,10 +20,10 @@ class RegistroDanosPage extends StatefulWidget {
   final VoidCallback? onContinuar;
 
   @override
-  State<RegistroDanosPage> createState() => _RegistroDanosPageState();
+  ConsumerState<RegistroDanosPage> createState() => _RegistroDanosPageState();
 }
 
-class _RegistroDanosPageState extends State<RegistroDanosPage> {
+class _RegistroDanosPageState extends ConsumerState<RegistroDanosPage> {
   late DamageRegistrationState _state;
 
   @override
@@ -31,6 +34,13 @@ class _RegistroDanosPageState extends State<RegistroDanosPage> {
       points: _generateInitialPoints(),
       currentView: VehicleView.frontal,
     );
+    if (widget.checklistType == ChecklistType.apertura) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ref
+            .read(checklistProgressServiceProvider)
+            .actualizarPaso(ChecklistAperturaPasos.registroDanos);
+      });
+    }
   }
 
   List<DamagePoint> _generateInitialPoints() {

@@ -4,12 +4,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/errors/app_exception.dart';
 import '../../data/models/mi_turno_activo_response.dart';
 import '../controllers/auth_controller.dart';
+import '../../features/turnos/services/checklist_progress_service.dart';
+import 'checklist_apertura_navigation.dart';
+import 'checklist_progress_provider.dart';
 import 'control_turnos_colors.dart';
 import 'inicio_turno/inicio_turno_page.dart';
 import 'mi_turno_provider.dart';
 import 'models/checklist_type.dart';
 import 'reporte_incidente/reporte_incidente_page.dart';
 import 'registro_combustible/registro_combustible_page.dart';
+import 'turno_apertura_provider.dart';
+import 'turno_cierre_provider.dart';
 import 'turno_status_provider.dart';
 
 class ControlTurnosPage extends ConsumerStatefulWidget {
@@ -18,7 +23,9 @@ class ControlTurnosPage extends ConsumerStatefulWidget {
     required this.onBack,
     this.onOpenDrawer,
     this.onAperturaTap,
+    this.onAperturaResumeTap,
     this.onCierreTap,
+    this.onCierreResumeTap,
     this.onReportarIncidenteTap,
     this.onRegistroCombustibleTap,
   });
@@ -26,7 +33,9 @@ class ControlTurnosPage extends ConsumerStatefulWidget {
   final VoidCallback onBack;
   final VoidCallback? onOpenDrawer;
   final VoidCallback? onAperturaTap;
+  final void Function(int paso)? onAperturaResumeTap;
   final VoidCallback? onCierreTap;
+  final void Function(int paso)? onCierreResumeTap;
   final VoidCallback? onReportarIncidenteTap;
   final VoidCallback? onRegistroCombustibleTap;
 
@@ -40,6 +49,78 @@ class _ControlTurnosPageState extends ConsumerState<ControlTurnosPage> {
     return miTurno.whenOrNull(data: (data) => data.turnoActivo) ?? false;
   }
 
+  bool get _hayProgresoIncompleto {
+    final progreso = ref.read(checklistProgressServiceProvider).leerProgreso();
+    return progreso != null && progreso.tieneProgresoIncompleto;
+  }
+
+  bool get _progresoAperturaIncompleto {
+    final progreso = ref.read(checklistProgressServiceProvider).leerProgreso();
+    return progreso != null &&
+        !progreso.esCierre &&
+        progreso.tieneProgresoIncompleto;
+  }
+
+  bool get _progresoCierreIncompleto {
+    final progreso = ref.read(checklistProgressServiceProvider).leerProgreso();
+    return progreso != null &&
+        progreso.esCierre &&
+        progreso.tieneProgresoIncompleto;
+  }
+
+  void _restaurarProgresoEnProvider(ChecklistProgress progreso) {
+    if (progreso.esCierre) {
+      ref.read(turnoCierreProvider.notifier).state = TurnoCierreState(
+        idTurno: progreso.idTurno,
+        idBitacoraCierre: progreso.idBitacoraCierre,
+        duracion: progreso.duracion,
+      );
+      return;
+    }
+
+    ref.read(turnoAperturaProvider.notifier).state = TurnoAperturaState(
+      idTurno: progreso.idTurno,
+      idBitacoraApertura: progreso.idBitacoraApertura,
+      placa: progreso.placa,
+      numeroEconomico: progreso.numeroEconomico,
+      modeloNombre: progreso.modeloNombre,
+      marcaNombre: progreso.marcaNombre,
+      anio: progreso.anio,
+    );
+  }
+
+  void _navegarAPasoCierre(BuildContext context, int paso) {
+    if (widget.onCierreResumeTap != null) {
+      widget.onCierreResumeTap!(paso);
+      return;
+    }
+    final route = ChecklistCierrePasos.routeForPaso(paso);
+    if (route != null) {
+      Navigator.of(context).pushNamed(route);
+    }
+  }
+
+  void _navegarAPaso(BuildContext context, int paso, ChecklistProgress progreso) {
+    if (widget.onAperturaResumeTap != null) {
+      widget.onAperturaResumeTap!(paso);
+      return;
+    }
+    navegarChecklistAperturaStandalone(context, paso, progreso);
+  }
+
+  Future<void> _limpiarProgresoSiTurnoInactivo(MiTurnoActivoResponse miTurno) async {
+    if (miTurno.turnoActivo) return;
+
+    final progreso = ref.read(checklistProgressServiceProvider).leerProgreso();
+    if (progreso != null && progreso.tieneProgresoIncompleto) {
+      return;
+    }
+
+    await ref.read(checklistProgressServiceProvider).limpiar();
+    ref.read(turnoAperturaProvider.notifier).state = const TurnoAperturaState();
+    ref.read(turnoCierreProvider.notifier).state = const TurnoCierreState();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -50,6 +131,13 @@ class _ControlTurnosPageState extends ConsumerState<ControlTurnosPage> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<AsyncValue<MiTurnoActivoResponse>>(miTurnoActivoProvider, (
+      _,
+      next,
+    ) {
+      next.whenData((miTurno) => _limpiarProgresoSiTurnoInactivo(miTurno));
+    });
+
     final user = ref.watch(authControllerProvider).user;
     final welcomeLabel = user?.roleName ?? user?.name ?? user?.email ?? 'Operador';
 
@@ -160,8 +248,8 @@ class _ControlTurnosPageState extends ConsumerState<ControlTurnosPage> {
   }
 
   Widget _buildActionCards(BuildContext context) {
-    final aperturaEnabled = !_isEnTurno;
-    final cierreEnabled = _isEnTurno;
+    final aperturaEnabled = _progresoAperturaIncompleto || (!_isEnTurno && !_progresoCierreIncompleto);
+    final cierreEnabled = _isEnTurno && (_progresoCierreIncompleto || !_hayProgresoIncompleto);
     
     return Row(
       children: [
@@ -173,7 +261,14 @@ class _ControlTurnosPageState extends ConsumerState<ControlTurnosPage> {
             enabled: aperturaEnabled,
             onTap: aperturaEnabled
                 ? () {
-                    if (widget.onAperturaTap != null) {
+                    final progreso =
+                        ref.read(checklistProgressServiceProvider).leerProgreso();
+                    if (progreso != null &&
+                        progreso.tieneProgresoIncompleto &&
+                        !progreso.esCierre) {
+                      _restaurarProgresoEnProvider(progreso);
+                      _navegarAPaso(context, progreso.pasoActual, progreso);
+                    } else if (widget.onAperturaTap != null) {
                       widget.onAperturaTap!();
                     } else {
                       Navigator.of(context).push(
@@ -196,7 +291,14 @@ class _ControlTurnosPageState extends ConsumerState<ControlTurnosPage> {
             iconColorOverride: const Color(0xFF7eb8e8),
             onTap: cierreEnabled
                 ? () {
-                    if (widget.onCierreTap != null) {
+                    final progreso =
+                        ref.read(checklistProgressServiceProvider).leerProgreso();
+                    if (progreso != null &&
+                        progreso.tieneProgresoIncompleto &&
+                        progreso.esCierre) {
+                      _restaurarProgresoEnProvider(progreso);
+                      _navegarAPasoCierre(context, progreso.pasoActual);
+                    } else if (widget.onCierreTap != null) {
                       widget.onCierreTap!();
                     } else {
                       Navigator.of(context).push(

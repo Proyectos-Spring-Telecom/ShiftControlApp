@@ -7,6 +7,7 @@ import 'bottom_navigation/home_tab.dart';
 import 'bottom_navigation/placeholder_tab.dart';
 import 'bottom_navigation/historial_tab.dart';
 import '../turnos/historial_turnos/historial_turnos_page.dart';
+import '../turnos/checklist_apertura_navigation.dart';
 import '../turnos/control_turnos_page.dart';
 import '../turnos/inicio_turno/inicio_turno_page.dart';
 import '../turnos/captura_odometro/captura_odometro_page.dart';
@@ -92,7 +93,19 @@ class _MainShellState extends State<MainShell> {
                 onBack: _onBackFromControlTurnos,
                 onOpenDrawer: () => _scaffoldKey.currentState?.openDrawer(),
                 onAperturaTap: () => _navigatorKey.currentState?.pushNamed('/inicio-turno'),
+                onAperturaResumeTap: (paso) {
+                  final route = ChecklistAperturaPasos.routeForPaso(paso);
+                  if (route != null) {
+                    _navigatorKey.currentState?.pushNamed(route);
+                  }
+                },
                 onCierreTap: () => _navigatorKey.currentState?.pushNamed('/cierre-turno'),
+                onCierreResumeTap: (paso) {
+                  final route = ChecklistCierrePasos.routeForPaso(paso);
+                  if (route != null) {
+                    _navigatorKey.currentState?.pushNamed(route);
+                  }
+                },
                 onReportarIncidenteTap: () => _navigatorKey.currentState?.pushNamed('/reporte-incidente'),
                 onRegistroCombustibleTap: () => _navigatorKey.currentState?.pushNamed('/registro-combustible'),
               ),

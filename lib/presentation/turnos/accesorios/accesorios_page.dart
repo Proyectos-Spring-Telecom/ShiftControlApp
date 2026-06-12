@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/errors/app_exception.dart';
 import '../../../data/models/registrar_accesorios_vehiculo_request.dart';
+import '../checklist_apertura_navigation.dart';
+import '../checklist_progress_provider.dart';
 import '../mi_turno_provider.dart';
 import '../models/checklist_type.dart';
 import '../turno_apertura_provider.dart';
@@ -24,6 +26,18 @@ class AccesoriosPage extends ConsumerStatefulWidget {
 
 class _AccesoriosPageState extends ConsumerState<AccesoriosPage> {
   bool _guardandoAccesorios = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.checklistType == ChecklistType.apertura) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ref
+            .read(checklistProgressServiceProvider)
+            .actualizarPaso(ChecklistAperturaPasos.accesorios);
+      });
+    }
+  }
 
   final Map<String, bool> _accesoriosEstado = {
     'limpiadores': true,

@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../core/errors/app_exception.dart';
+import '../checklist_apertura_navigation.dart';
+import '../checklist_progress_provider.dart';
 import '../mi_turno_provider.dart';
 import '../models/checklist_type.dart';
 import '../../../data/datasources/remote/placas_validar_remote_datasource.dart';
@@ -44,6 +46,18 @@ class _CapturaOdometroPageState extends ConsumerState<CapturaOdometroPage> {
   Uint8List? _fotoTablero;
   String _kilometraje = '142.593';
   bool _guardandoTablero = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.checklistType == ChecklistType.apertura) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ref
+            .read(checklistProgressServiceProvider)
+            .actualizarPaso(ChecklistAperturaPasos.capturaOdometro);
+      });
+    }
+  }
 
   Future<void> _tomarFotoTablero() async {
     final XFile? photo = await _picker.pickImage(source: ImageSource.camera);

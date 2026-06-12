@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import '../models/checklist_type.dart';
 import '../../../data/datasources/remote/placas_validar_remote_datasource.dart';
 import '../placa_validada_provider.dart';
+import '../turno_apertura_provider.dart';
 import 'captura_odometro_colors.dart';
 import 'dashed_border_box.dart';
 import '../registro_combustible/registro_combustible_page.dart';
@@ -86,8 +87,9 @@ class _CapturaOdometroPageState extends State<CapturaOdometroPage> {
                   const SizedBox(height: 20),
                   Consumer(
                     builder: (context, ref, _) {
+                      final turno = ref.watch(turnoAperturaProvider);
                       final r = ref.watch(placaValidadaProvider);
-                      return _buildVehicleCard(context, r);
+                      return _buildVehicleCard(context, turno, r);
                     },
                   ),
                   const SizedBox(height: 24),
@@ -140,13 +142,32 @@ class _CapturaOdometroPageState extends State<CapturaOdometroPage> {
     );
   }
 
-  Widget _buildVehicleCard(BuildContext context, PlacasValidarResult? r) {
-    final hasProvider = r != null && r.registered;
-    final placa = hasProvider ? (r.placa ?? '—') : (widget.placa ?? 'XJA-99-23');
-    final marcaModelo = hasProvider ? _marcaModeloFromResult(r) : _marcaModeloFromWidget;
-    final anio = hasProvider ? (r.anio?.toString() ?? '—') : (widget.anio?.toString() ?? '—');
-    final economicoStr = hasProvider ? r.economico : widget.economico;
-    final economico = economicoStr != null && economicoStr.isNotEmpty ? '#$economicoStr' : 'OP-2024-892';
+  Widget _buildVehicleCard(
+    BuildContext context,
+    TurnoAperturaState turno,
+    PlacasValidarResult? r,
+  ) {
+    final isApertura = widget.checklistType == ChecklistType.apertura;
+    final String placa;
+    final String marcaModelo;
+    final String anio;
+    final String economico;
+
+    if (isApertura) {
+      placa = turno.placa ?? '—';
+      marcaModelo = _formatMarcaModelo(turno.marcaNombre, turno.modeloNombre);
+      anio = turno.anio?.toString() ?? '—';
+      economico = turno.numeroEconomico != null && turno.numeroEconomico!.isNotEmpty
+          ? '#${turno.numeroEconomico}'
+          : '—';
+    } else {
+      final hasProvider = r != null && r.registered;
+      placa = hasProvider ? (r.placa ?? '—') : (widget.placa ?? '—');
+      marcaModelo = hasProvider ? _marcaModeloFromResult(r) : _marcaModeloFromWidget;
+      anio = hasProvider ? (r.anio?.toString() ?? '—') : (widget.anio?.toString() ?? '—');
+      final economicoStr = hasProvider ? r.economico : widget.economico;
+      economico = economicoStr != null && economicoStr.isNotEmpty ? '#$economicoStr' : '—';
+    }
 
     return Container(
       width: double.infinity,
@@ -206,18 +227,17 @@ class _CapturaOdometroPageState extends State<CapturaOdometroPage> {
   }
 
   String get _marcaModeloFromWidget {
-    final m = widget.marca ?? '';
-    final mod = widget.modelo ?? '';
-    if (m.isEmpty && mod.isEmpty) return 'Nissan Versa 2022';
-    if (m.isEmpty) return mod;
-    if (mod.isEmpty) return m;
-    return '$m $mod';
+    return _formatMarcaModelo(widget.marca, widget.modelo);
   }
 
   static String _marcaModeloFromResult(PlacasValidarResult r) {
-    final m = r.marca ?? '';
-    final mod = r.modelo ?? '';
-    if (m.isEmpty && mod.isEmpty) return 'Nissan Versa 2022';
+    return _formatMarcaModelo(r.marca, r.modelo);
+  }
+
+  static String _formatMarcaModelo(String? marca, String? modelo) {
+    final m = marca ?? '';
+    final mod = modelo ?? '';
+    if (m.isEmpty && mod.isEmpty) return '—';
     if (m.isEmpty) return mod;
     if (mod.isEmpty) return m;
     return '$m $mod';

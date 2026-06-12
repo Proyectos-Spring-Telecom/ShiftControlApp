@@ -69,12 +69,15 @@ final authRemoteDatasourceProvider = Provider<AuthRemoteDatasource>((ref) {
 });
 
 final profileServiceProvider = Provider<ProfileService>((ref) {
-  return ProfileService(ref.watch(apiClientProvider));
+  return ProfileService(
+    ref.watch(apiClientProvider),
+    ref.watch(tokenStorageServiceProvider),
+  );
 });
 
 final authServiceProvider = Provider<AuthService>((ref) {
   return AuthService(
-    ref.watch(apiClientProvider),
+    ref.watch(authRemoteDatasourceProvider),
     ref.watch(authLocalDatasourceProvider),
   );
 });
@@ -83,6 +86,7 @@ final authRepositoryProvider = Provider<AuthRepository>((ref) {
   return AuthRepositoryImpl(
     ref.watch(authRemoteDatasourceProvider),
     ref.watch(authLocalDatasourceProvider),
+    ref.watch(tokenStorageServiceProvider),
   );
 });
 

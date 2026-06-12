@@ -62,13 +62,17 @@ class HttpApiClient implements ApiClient {
     String message;
     switch (response.statusCode) {
       case 400:
-        message = _parseMessage(body) ?? 'Datos incorrectos. Revisa tu correo y contraseña.';
+        message = _parseMessage(body) ?? 'Credenciales incompletas. Revisa tu correo y contraseña.';
         debugPrint('! ApiClient 400: $message');
         throw AuthException(message, '400');
       case 401:
-        message = _parseMessage(body) ?? 'Sesión expirada o credenciales inválidas. Vuelve a iniciar sesión.';
+        message = _parseMessage(body) ?? 'Credenciales inválidas. Vuelve a iniciar sesión.';
         debugPrint('! ApiClient 401: $message');
         throw AuthException(message, '401');
+      case 429:
+        message = _parseMessage(body) ?? 'Demasiados intentos. Espera un momento e intenta de nuevo.';
+        debugPrint('! ApiClient 429: $message');
+        throw AuthException(message, '429');
       case 403:
         message = _parseMessage(body) ?? 'No autorizado.';
         debugPrint('! ApiClient 403: $message');
@@ -77,9 +81,13 @@ class HttpApiClient implements ApiClient {
         message = _parseMessage(body) ?? 'No encontrado.';
         throw NetworkException(message, '404');
       case 500:
-        message = _parseMessage(body) ?? 'Error en el servidor. Intenta más tarde.';
+        message = _parseMessage(body) ?? 'Servicio no disponible. Intenta más tarde.';
         debugPrint('! ApiClient 500: $message');
         throw NetworkException(message, '500');
+      case 503:
+        message = _parseMessage(body) ?? 'Servicio no disponible. Intenta más tarde.';
+        debugPrint('! ApiClient 503: $message');
+        throw NetworkException(message, '503');
       default:
         message = _parseMessage(body) ?? 'Error de conexión (${response.statusCode}).';
         throw NetworkException(message, '${response.statusCode}');

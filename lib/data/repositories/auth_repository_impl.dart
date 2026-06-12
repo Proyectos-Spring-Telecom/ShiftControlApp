@@ -1,3 +1,4 @@
+import '../../core/auth/token_storage_service.dart';
 import '../../core/errors/app_exception.dart';
 import '../../domain/entities/user_entity.dart';
 import '../../domain/repositories/auth_repository.dart';
@@ -7,16 +8,22 @@ import '../models/user_model.dart';
 
 /// Implementación del repositorio de autenticación.
 class AuthRepositoryImpl implements AuthRepository {
-  AuthRepositoryImpl(this._remote, this._local);
+  AuthRepositoryImpl(this._remote, this._local, this._tokenStorage);
 
   final AuthRemoteDatasource _remote;
   final AuthLocalDatasource _local;
+  final TokenStorageService _tokenStorage;
 
   @override
   Future<UserEntity?> login(String email, String password) async {
     try {
       final result = await _remote.login(email, password);
-      await _local.saveSession(result.user, result.token, refreshToken: result.refreshToken);
+      await _local.saveSession(
+        result.user,
+        result.token,
+        refreshToken: result.refreshToken,
+        expiresIn: result.expiresIn,
+      );
       return result.user;
     } on AppException {
       rethrow;
@@ -25,6 +32,10 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Future<void> logout() async {
+    final token = await _tokenStorage.getToken();
+    if (token != null && token.isNotEmpty) {
+      await _remote.remoteLogout(token);
+    }
     await _local.clearSession();
   }
 

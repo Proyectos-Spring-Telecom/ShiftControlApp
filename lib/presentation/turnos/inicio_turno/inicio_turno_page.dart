@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../core/errors/app_exception.dart';
@@ -18,7 +19,9 @@ import '../captura_odometro/dashed_border_box.dart';
 import '../escanear_vehiculo/escanear_vehiculo_page.dart';
 import '../captura_odometro/captura_odometro_colors.dart';
 import '../identificar_placa/identificar_placa_page.dart';
+import '../mi_turno_provider.dart';
 import '../placa_validada_provider.dart';
+import '../turno_apertura_provider.dart';
 
 class InicioTurnoPage extends ConsumerStatefulWidget {
   const InicioTurnoPage({
@@ -39,8 +42,10 @@ class InicioTurnoPage extends ConsumerStatefulWidget {
 class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
   String? _vehiculoSeleccionado;
   Uint8List? _fotoResguardo;
+  Uint8List? _evidenciaBytes;
   final ImagePicker _picker = ImagePicker();
   bool _validandoPlaca = false;
+  bool _creandoTurno = false;
   PlacasValidarResult? _placaValidarResult;
 
   Future<void> _tomarFotoResguardo() async {
@@ -76,11 +81,12 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
     Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
         builder: (_) => IdentificarPlacaPage(
-          onPlacaIdentificada: (vehiculoId) {
+          onPlacaIdentificada: (vehiculoId, {Uint8List? imageBytes}) {
             ref.read(placaValidadaProvider.notifier).state = null;
             setState(() {
               _vehiculoSeleccionado = vehiculoId;
               _placaValidarResult = null;
+              _evidenciaBytes = imageBytes;
             });
             Navigator.of(context).pop();
             if (vehiculoId.isNotEmpty) _validarPlaca(vehiculoId);
@@ -89,6 +95,124 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
         ),
       ),
     );
+  }
+
+  Future<Position?> _obtenerUbicacion() async {
+    try {
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Se necesita permiso de ubicación para abrir turno.'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return null;
+        }
+      }
+      if (permission == LocationPermission.deniedForever) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Permisos de ubicación denegados permanentemente. Actívalos en Configuración.',
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return null;
+      }
+      return await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+      );
+    } catch (e) {
+      debugPrint('Error obteniendo ubicación: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No se pudo obtener la ubicación: $e'), backgroundColor: Colors.red),
+        );
+      }
+      return null;
+    }
+  }
+
+  Future<void> _crearTurnoYContinuar() async {
+    if (_evidenciaBytes == null || _evidenciaBytes!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No hay foto de evidencia. Identifica la placa primero.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _creandoTurno = true);
+
+    final position = await _obtenerUbicacion();
+    if (position == null) {
+      if (mounted) setState(() => _creandoTurno = false);
+      return;
+    }
+
+    try {
+      final turnosService = ref.read(turnosServiceProvider);
+      final response = await turnosService.crearTurno(
+        latitud: position.latitude,
+        longitud: position.longitude,
+        evidenciaBytes: _evidenciaBytes!,
+      );
+
+      if (!mounted) return;
+      setState(() => _creandoTurno = false);
+
+      ref.read(turnoAperturaProvider.notifier).state = TurnoAperturaState(
+        idTurno: response.idTurno,
+        idBitacoraApertura: response.idBitacoraApertura,
+        placa: response.placa,
+        numeroEconomico: response.numeroEconomico,
+        anio: response.anio,
+        modeloNombre: response.modeloNombre,
+        marcaNombre: response.marcaNombre,
+      );
+
+      debugPrint(
+        'Turno creado: idTurno=${response.idTurno}, idBitacoraApertura=${response.idBitacoraApertura}',
+      );
+
+      if (widget.onSiguienteTap != null) {
+        widget.onSiguienteTap!();
+      } else {
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => const CapturaOdometroPage(),
+          ),
+        );
+      }
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      setState(() => _creandoTurno = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message), backgroundColor: Colors.red),
+      );
+    } on NetworkException catch (e) {
+      if (!mounted) return;
+      setState(() => _creandoTurno = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message), backgroundColor: Colors.red),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _creandoTurno = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al crear turno: $e'), backgroundColor: Colors.red),
+      );
+    }
   }
 
   /// Llama a GET /placas/validar con numeroPlaca; idCliente e idSolucion vienen de GET /auth/me.
@@ -295,22 +419,18 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
           ),
         ),
         const SizedBox(height: 8),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'Fecha: ${formatearFechaHoraActual()}',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: InicioTurnoColors.textPrimary(context),
-                  ),
-            ),
-            Text(
-              'Lugar: Tlaxcala',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: InicioTurnoColors.textPrimary(context),
-                  ),
-            ),
-          ],
+        Text(
+          'Fecha: ${formatearFechaHoraActual()}',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: InicioTurnoColors.textPrimary(context),
+              ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Lugar: Tlaxcala',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: InicioTurnoColors.textPrimary(context),
+              ),
         ),
         const SizedBox(height: 16),
         Divider(color: InicioTurnoColors.divider(context), height: 1, thickness: 1),
@@ -473,16 +593,20 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
           width: double.infinity,
           height: 52,
           child: ElevatedButton(
-            onPressed: canContinue
+            onPressed: (canContinue && !_creandoTurno)
                 ? () {
-                    if (widget.onSiguienteTap != null) {
-                      widget.onSiguienteTap!();
+                    if (widget.checklistType == ChecklistType.apertura) {
+                      _crearTurnoYContinuar();
                     } else {
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => const CapturaOdometroPage(),
-                        ),
-                      );
+                      if (widget.onSiguienteTap != null) {
+                        widget.onSiguienteTap!();
+                      } else {
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const CapturaOdometroPage(),
+                          ),
+                        );
+                      }
                     }
                   }
                 : null,
@@ -495,14 +619,39 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
                 borderRadius: BorderRadius.circular(12),
               ),
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text('Continuar', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: Colors.white)),
-                const SizedBox(width: 8),
-                const Icon(Icons.arrow_forward, size: 20),
-              ],
-            ),
+            child: _creandoTurno
+                ? Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        'Creando turno...',
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                      ),
+                    ],
+                  )
+                : Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Continuar',
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                      ),
+                      const SizedBox(width: 8),
+                      const Icon(Icons.arrow_forward, size: 20),
+                    ],
+                  ),
           ),
         ),
       ),

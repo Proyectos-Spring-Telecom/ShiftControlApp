@@ -2,30 +2,44 @@ import 'package:flutter/foundation.dart';
 
 import '../../../../core/errors/app_exception.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../features/auth/models/login_nip_request.dart';
+import '../../models/login_me_response.dart';
 import '../../models/login_request_model.dart';
-import '../../models/login_response_model.dart';
+import '../../models/login_tokens_response.dart';
 import '../../models/user_model.dart';
 
 /// Resultado del login: usuario y token para persistir.
 class LoginResult {
-  const LoginResult({required this.user, required this.token, this.refreshToken});
+  const LoginResult({
+    required this.user,
+    required this.token,
+    this.refreshToken,
+    this.expiresIn,
+  });
 
   final UserModel user;
   final String token;
   final String? refreshToken;
+  final int? expiresIn;
 }
 
-/// Resultado de POST /auth/refresh (o /api/auth/refresh).
+/// Resultado de POST /api/login/refresh.
 class RefreshResult {
-  const RefreshResult({required this.token, required this.refreshToken});
+  const RefreshResult({
+    required this.token,
+    required this.refreshToken,
+    this.expiresIn,
+  });
 
   final String token;
   final String refreshToken;
+  final int? expiresIn;
 }
 
 /// Fuente de datos remota para autenticación.
 abstract interface class AuthRemoteDatasource {
   Future<LoginResult> login(String email, String password);
+  Future<LoginResult> loginWithNip(String userName, String codigo);
   Future<RefreshResult> refreshToken(String refreshToken);
   Future<void> recuperarAcceso({required String userName});
   Future<void> cambiarContrasenaDesdeRecuperacion({
@@ -33,6 +47,7 @@ abstract interface class AuthRemoteDatasource {
     required String passwordNueva,
     required String passwordConfirmacion,
   });
+  Future<void> remoteLogout(String token);
 }
 
 /// Implementación mock para desarrollo sin API.
@@ -47,6 +62,20 @@ class AuthRemoteDatasourceMock implements AuthRemoteDatasource {
       id: 'mock-${DateTime.now().millisecondsSinceEpoch}',
       email: email,
       name: email.split('@').first,
+    );
+    return LoginResult(user: user, token: 'mock-token');
+  }
+
+  @override
+  Future<LoginResult> loginWithNip(String userName, String codigo) async {
+    await Future<void>.delayed(const Duration(milliseconds: 800));
+    if (userName.isEmpty || codigo.isEmpty) {
+      throw const AuthException('Usuario y NIP son obligatorios');
+    }
+    final user = UserModel(
+      id: 'mock-nip-${DateTime.now().millisecondsSinceEpoch}',
+      email: userName,
+      name: userName.split('@').first,
     );
     return LoginResult(user: user, token: 'mock-token');
   }
@@ -77,6 +106,11 @@ class AuthRemoteDatasourceMock implements AuthRemoteDatasource {
       throw const AuthException('Las contraseñas no coinciden');
     }
   }
+
+  @override
+  Future<void> remoteLogout(String token) async {
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+  }
 }
 
 /// Implementación real: POST /api/login con [ApiClient].
@@ -86,41 +120,45 @@ class AuthRemoteDatasourceReal implements AuthRemoteDatasource {
 
   final ApiClient _client;
 
+  static const _pathLogin = '/api/login';
+  static const _pathLoginNip = '/api/login/operador/accesso/nip';
+  static const _pathLoginMe = '/api/login/me';
+
+  Future<LoginResult> _loginResultFromTokens(
+    LoginTokensResponse tokens, {
+    required String fallbackEmail,
+    required String logLabel,
+  }) async {
+    if (tokens.token.isEmpty) {
+      debugPrint('! AuthRemoteDatasourceReal: respuesta sin token ($logLabel)');
+      throw const AuthException('No se recibió sesión. Intenta de nuevo.');
+    }
+
+    final meData = await _client.get(
+      _pathLoginMe,
+      headers: {'Authorization': 'Bearer ${tokens.token}'},
+    );
+    debugPrint('Login me response ($logLabel): $meData');
+    final me = LoginMeResponse.fromJson(meData);
+    final user = me.toUserModel(fallbackEmail: fallbackEmail);
+
+    debugPrint('AuthRemoteDatasourceReal: $logLabel exitoso para ${user.email}');
+    return LoginResult(
+      user: user,
+      token: tokens.token,
+      refreshToken: tokens.refreshToken,
+      expiresIn: tokens.expiresIn,
+    );
+  }
+
   @override
   Future<LoginResult> login(String email, String password) async {
     final body = LoginRequestModel(userName: email, password: password).toJson();
     try {
-      final data = await _client.post('/api/login', body: body);
-      debugPrint('Login response: $data');
-      final response = LoginResponseModel.fromJson(data);
-      if (response.token.isEmpty) {
-        debugPrint('! AuthRemoteDatasourceReal: respuesta sin token');
-        throw const AuthException('No se recibió sesión. Intenta de nuevo.');
-      }
-
-      final name = response.nombre ?? response.userName ?? email.split('@').first;
-      final userId = response.id ?? 'user-${DateTime.now().millisecondsSinceEpoch}';
-      final userEmail = response.email ?? response.userName ?? email;
-
-      final user = UserModel(
-        id: userId,
-        email: userEmail,
-        name: name,
-        roleName: response.rol?.nombre,
-        apellidoPaterno: response.apellidoPaterno,
-        apellidoMaterno: response.apellidoMaterno,
-        telefono: response.telefono,
-        userName: response.userName,
-        fotoPerfil: response.fotoPerfil,
-      );
-
-      debugPrint('AuthRemoteDatasourceReal: login exitoso para ${user.email}');
-      debugPrint('Login exitoso; token guardado.');
-      return LoginResult(
-        user: user,
-        token: response.token,
-        refreshToken: response.refreshToken,
-      );
+      final loginData = await _client.post(_pathLogin, body: body);
+      debugPrint('Login tokens response: $loginData');
+      final tokens = LoginTokensResponse.fromJson(loginData);
+      return _loginResultFromTokens(tokens, fallbackEmail: email, logLabel: 'login');
     } on AuthException {
       rethrow;
     } on NetworkException catch (e) {
@@ -129,7 +167,27 @@ class AuthRemoteDatasourceReal implements AuthRemoteDatasource {
     }
   }
 
-  static const _pathRefresh = '/api/auth/refresh';
+  @override
+  Future<LoginResult> loginWithNip(String userName, String codigo) async {
+    final body = LoginNipRequest(userName: userName.trim(), codigo: codigo.trim()).toJson();
+    try {
+      final loginData = await _client.post(_pathLoginNip, body: body);
+      debugPrint('Login NIP tokens response: $loginData');
+      final tokens = LoginTokensResponse.fromJson(loginData);
+      return _loginResultFromTokens(
+        tokens,
+        fallbackEmail: userName.trim(),
+        logLabel: 'login NIP',
+      );
+    } on AuthException {
+      rethrow;
+    } on NetworkException catch (e) {
+      debugPrint('! AuthRemoteDatasourceReal login NIP NetworkException: ${e.message}');
+      throw AuthException(e.message, e.code);
+    }
+  }
+
+  static const _pathRefresh = '/api/login/refresh';
   static const _pathRecuperarAcceso = '/api/login/usuario/solicitud/recuperacion';
 
   @override
@@ -137,9 +195,13 @@ class AuthRemoteDatasourceReal implements AuthRemoteDatasource {
     debugPrint('Intentando renovar token...');
     try {
       final body = <String, dynamic>{'refreshToken': refreshToken};
-      final data = await _client.post(_pathRefresh, body: body);
-      final token = data['token'] as String?;
+      final raw = await _client.post(_pathRefresh, body: body);
+      final data = raw['data'] is Map<String, dynamic>
+          ? raw['data'] as Map<String, dynamic>
+          : raw;
+      final token = (data['token'] as String?) ?? (data['accessToken'] as String?);
       final newRefreshToken = data['refreshToken'] as String?;
+      final expiresIn = (data['expiresIn'] as num?)?.toInt();
       if (token == null || token.isEmpty) {
         throw const AuthException('No se recibió token en refresh.', '400');
       }
@@ -147,6 +209,7 @@ class AuthRemoteDatasourceReal implements AuthRemoteDatasource {
       return RefreshResult(
         token: token,
         refreshToken: newRefreshToken ?? refreshToken,
+        expiresIn: expiresIn,
       );
     } on AuthException catch (e) {
       debugPrint('Refresh token fallido: ${e.code} ${e.message}');
@@ -210,6 +273,25 @@ class AuthRemoteDatasourceReal implements AuthRemoteDatasource {
     } catch (e, st) {
       debugPrint('! AuthRemoteDatasourceReal cambiarContrasenaDesdeRecuperacion error: $e\n$st');
       rethrow;
+    }
+  }
+
+  @override
+  Future<void> remoteLogout(String token) async {
+    debugPrint('Cerrando sesión en servidor...');
+    try {
+      await _client.post(
+        '/api/login/logout',
+        body: <String, dynamic>{},
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      debugPrint('Logout en servidor exitoso');
+    } on AuthException catch (e) {
+      debugPrint('Logout servidor AuthException: ${e.code} - ignorando');
+    } on NetworkException catch (e) {
+      debugPrint('Logout servidor NetworkException: ${e.message} - ignorando');
+    } catch (e) {
+      debugPrint('Logout servidor error inesperado: $e - ignorando');
     }
   }
 }

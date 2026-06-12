@@ -20,7 +20,7 @@ class IdentificarPlacaPage extends ConsumerStatefulWidget {
     this.onRegresar,
   });
 
-  final void Function(String vehiculoId)? onPlacaIdentificada;
+  final void Function(String vehiculoId, {Uint8List? imageBytes})? onPlacaIdentificada;
   final VoidCallback? onRegresar;
 
   @override
@@ -184,7 +184,7 @@ class _IdentificarPlacaPageState extends ConsumerState<IdentificarPlacaPage> {
         _isLoading = false;
         _autoCaptureDone = true;
       });
-      _returnPlaca(result.plateNumber);
+      _returnPlaca(result.plateNumber, imageBytes: Uint8List.fromList(bytesToSend));
       if (mounted) {
         showAppAlertBanner(
           context,
@@ -228,9 +228,9 @@ class _IdentificarPlacaPageState extends ConsumerState<IdentificarPlacaPage> {
     }
   }
 
-  void _returnPlaca(String plateNumber) {
+  void _returnPlaca(String plateNumber, {Uint8List? imageBytes}) {
     if (widget.onPlacaIdentificada != null) {
-      widget.onPlacaIdentificada!(plateNumber);
+      widget.onPlacaIdentificada!(plateNumber, imageBytes: imageBytes);
     } else {
       Navigator.of(context).pop(plateNumber);
     }

@@ -7,7 +7,12 @@ import '../../models/user_model.dart';
 
 /// Fuente de datos local para sesión de autenticación.
 abstract interface class AuthLocalDatasource {
-  Future<void> saveSession(UserModel user, String token, {String? refreshToken});
+  Future<void> saveSession(
+    UserModel user,
+    String token, {
+    String? refreshToken,
+    int? expiresIn,
+  });
   Future<void> clearSession();
   Future<UserModel?> getStoredUser();
   Future<String?> getStoredToken();
@@ -24,12 +29,18 @@ class AuthLocalDatasourceImpl implements AuthLocalDatasource {
   final TokenStorageService _tokenStorage;
 
   @override
-  Future<void> saveSession(UserModel user, String token, {String? refreshToken}) async {
+  Future<void> saveSession(
+    UserModel user,
+    String token, {
+    String? refreshToken,
+    int? expiresIn,
+  }) async {
     try {
       await _tokenStorage.saveToken(token);
       if (refreshToken != null && refreshToken.isNotEmpty) {
         await _tokenStorage.saveRefreshToken(refreshToken);
       }
+      await _tokenStorage.saveTokenExpiry(expiresInSeconds: expiresIn);
       await _prefs.setString(AppConstants.keyUserId, user.id);
       await _prefs.setString(AppConstants.keyUserEmail, user.email);
       await _prefs.setString(AppConstants.keyUserName, user.name);

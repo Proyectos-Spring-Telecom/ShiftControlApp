@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../data/datasources/remote/placas_validar_remote_datasource.dart';
+import '../../core/errors/app_exception.dart';
+import '../../data/models/mi_turno_activo_response.dart';
 import '../controllers/auth_controller.dart';
 import 'control_turnos_colors.dart';
 import 'inicio_turno/inicio_turno_page.dart';
+import 'mi_turno_provider.dart';
 import 'models/checklist_type.dart';
-import 'placa_validada_provider.dart';
 import 'reporte_incidente/reporte_incidente_page.dart';
 import 'registro_combustible/registro_combustible_page.dart';
 import 'turno_status_provider.dart';
@@ -34,7 +35,18 @@ class ControlTurnosPage extends ConsumerStatefulWidget {
 }
 
 class _ControlTurnosPageState extends ConsumerState<ControlTurnosPage> {
-  bool get _isEnTurno => ref.watch(turnoStatusProvider) == TurnoStatus.enTurno;
+  bool get _isEnTurno {
+    final miTurno = ref.watch(miTurnoActivoProvider);
+    return miTurno.whenOrNull(data: (data) => data.turnoActivo) ?? false;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(miTurnoActivoProvider.notifier).fetch();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -204,10 +216,7 @@ class _ControlTurnosPageState extends ConsumerState<ControlTurnosPage> {
   }
 
   Widget _buildEstadoActual(BuildContext context) {
-    final placaResult = ref.watch(placaValidadaProvider);
-    final hasVehiculo = placaResult != null && placaResult.registered;
-    final vehiculoTitle = hasVehiculo ? _vehiculoTitle(placaResult!) : 'Nissan Versa 2023';
-    final vehiculoPlaca = hasVehiculo ? (placaResult!.placa ?? '—') : 'XJA-99-23';
+    final miTurnoAsync = ref.watch(miTurnoActivoProvider);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -221,101 +230,184 @@ class _ControlTurnosPageState extends ConsumerState<ControlTurnosPage> {
               ),
         ),
         const SizedBox(height: 12),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: ControlTurnosColors.cardBackground(context),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-            Row(
-              children: [
-                _StatusPill(status: ref.watch(turnoStatusProvider)),
-                const Spacer(),
-                Text(
-                  'Folio: #8821',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: ControlTurnosColors.textSecondary(context),
-                      ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: ControlTurnosColors.background(context),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    Icons.directions_car_outlined,
-                    color: ControlTurnosColors.textPrimary(context),
-                    size: 28,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        vehiculoTitle,
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              color: ControlTurnosColors.textPrimary(context),
-                              fontWeight: FontWeight.bold,
-                            ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Placa: $vehiculoPlaca',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: ControlTurnosColors.textSecondary(context),
-                            ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                const Expanded(
-                  child: _InfoChip(
-                    label: 'Inicio',
-                    value: '08:30 AM',
-                  ),
-                ),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: _InfoChip(
-                    label: 'Duración',
-                    value: '04h 12m',
-                  ),
-                ),
-              ],
-            ),
-          ],
-          ),
+        miTurnoAsync.when(
+          loading: () => _buildEstadoActualLoading(context),
+          error: (error, _) => _buildEstadoActualError(context, error),
+          data: (miTurno) => _buildEstadoActualData(context, miTurno),
         ),
       ],
     );
   }
 
-  static String _vehiculoTitle(PlacasValidarResult r) {
-    final marca = r.marca ?? '';
-    final modelo = r.modelo ?? '';
-    final anio = r.anio?.toString() ?? '';
-    final parts = [marca, modelo].where((s) => s.isNotEmpty);
-    if (parts.isEmpty) return anio.isNotEmpty ? '— $anio' : '—';
-    final base = parts.join(' ');
-    return anio.isNotEmpty ? '$base - $anio' : base;
+  Widget _buildEstadoActualCard(BuildContext context, {required Widget child}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: ControlTurnosColors.cardBackground(context),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: child,
+    );
+  }
+
+  Widget _buildEstadoActualLoading(BuildContext context) {
+    return _buildEstadoActualCard(
+      context,
+      child: const SizedBox(
+        height: 120,
+        child: Center(child: CircularProgressIndicator()),
+      ),
+    );
+  }
+
+  Widget _buildEstadoActualError(BuildContext context, Object error) {
+    final message = error is AppException
+        ? error.message
+        : 'No se pudo cargar el estado del turno.';
+
+    return _buildEstadoActualCard(
+      context,
+      child: Column(
+        children: [
+          Icon(
+            Icons.error_outline,
+            color: ControlTurnosColors.textSecondary(context),
+            size: 32,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: ControlTurnosColors.textSecondary(context),
+                ),
+          ),
+          const SizedBox(height: 16),
+          TextButton(
+            onPressed: () => ref.read(miTurnoActivoProvider.notifier).fetch(),
+            style: TextButton.styleFrom(
+              foregroundColor: ControlTurnosColors.accent,
+            ),
+            child: const Text('Reintentar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEstadoActualData(BuildContext context, MiTurnoActivoResponse miTurno) {
+    final turnoActivo = miTurno.turnoActivo;
+    final status = turnoActivo ? TurnoStatus.enTurno : TurnoStatus.turnoCerrado;
+    final vehiculoTitle = turnoActivo
+        ? (miTurno.vehiculo?.placas ?? 'Sin vehículo')
+        : 'Sin turno activo';
+    final vehiculoPlaca = turnoActivo ? (miTurno.vehiculo?.placas ?? '—') : '—';
+    final inicio = turnoActivo ? _formatearHoraInicio(miTurno.fechaInicio) : '—';
+    final duracion =
+        turnoActivo ? _formatearDuracion(miTurno.duracionSegundos) : '—';
+    final folio = turnoActivo && miTurno.idTurno != null
+        ? 'Folio: #${miTurno.idTurno}'
+        : 'Folio: —';
+
+    return _buildEstadoActualCard(
+      context,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              _StatusPill(status: status),
+              const Spacer(),
+              Text(
+                folio,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: ControlTurnosColors.textSecondary(context),
+                    ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: ControlTurnosColors.background(context),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.directions_car_outlined,
+                  color: ControlTurnosColors.textPrimary(context),
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      vehiculoTitle,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            color: ControlTurnosColors.textPrimary(context),
+                            fontWeight: FontWeight.bold,
+                          ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Placa: $vehiculoPlaca',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: ControlTurnosColors.textSecondary(context),
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Expanded(
+                child: _InfoChip(
+                  label: 'Inicio',
+                  value: inicio,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _InfoChip(
+                  label: 'Duración',
+                  value: duracion,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _formatearHoraInicio(DateTime? fecha) {
+    if (fecha == null) return '—';
+    final hour = fecha.hour;
+    final h = hour % 12 == 0 ? 12 : hour % 12;
+    final m = fecha.minute.toString().padLeft(2, '0');
+    final ampm = hour >= 12 ? 'PM' : 'AM';
+    return '$h:$m $ampm';
+  }
+
+  static String _formatearDuracion(int? segundos) {
+    if (segundos == null || segundos <= 0) return '—';
+    final d = Duration(seconds: segundos);
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60);
+    final s = d.inSeconds.remainder(60);
+    if (h > 0) return '${h}h ${m.toString().padLeft(2, '0')}m';
+    if (m > 0) return '${m}m ${s.toString().padLeft(2, '0')}s';
+    return '${s}s';
   }
 
   Widget _buildHistorialReciente(BuildContext context) {

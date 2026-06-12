@@ -6,6 +6,10 @@ abstract final class AppConstants {
 
   static const String keyAuthToken = 'auth_token';
   static const String keyRefreshToken = 'refresh_token';
+  /// Segundos hasta expiración del access token (POST /api/login expiresIn).
+  static const String keyTokenExpiresIn = 'token_expires_in';
+  /// Timestamp Unix (segundos) en que expira el access token.
+  static const String keyTokenExpiresAt = 'token_expires_at';
   static const String keyUserId = 'user_id';
   static const String keyUserEmail = 'user_email';
   static const String keyUserName = 'user_name';

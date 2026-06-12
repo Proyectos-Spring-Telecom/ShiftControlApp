@@ -1,4 +1,4 @@
-/// Modelo del body para PATCH /api/usuarios/actualizar/contrasena.
+/// Modelo del body para PATCH /api/login/cambiar/accesso (cambio desde perfil).
 class ChangePasswordRequest {
   const ChangePasswordRequest({
     required this.passwordActual,

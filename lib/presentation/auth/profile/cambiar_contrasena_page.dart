@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/constants/route_constants.dart';
 import '../../../core/errors/app_exception.dart';
 import '../../../features/profile/models/change_password_request.dart';
-import '../../../features/profile/services/profile_service.dart';
 import '../../controllers/auth_controller.dart';
 import '../../widgets/app_alert_banner.dart';
 import '../../widgets/loading_overlay.dart';
@@ -131,12 +131,19 @@ class _CambiarContrasenaPageState extends ConsumerState<CambiarContrasenaPage> {
       final message = response['message'] is String
           ? response['message'] as String
           : 'Tu contraseña se actualizó correctamente.';
+      await ref.read(authControllerProvider.notifier).logout();
+      if (!mounted) return;
       showAppAlertBanner(
         context,
         type: AppAlertType.success,
         title: 'Contraseña actualizada',
         message: message,
-        onDismissed: () => Navigator.of(context).pop(),
+        onDismissed: () {
+          Navigator.of(context).pushNamedAndRemoveUntil(
+            RouteConstants.login,
+            (route) => false,
+          );
+        },
       );
     } on AuthException catch (e) {
       if (!mounted) return;

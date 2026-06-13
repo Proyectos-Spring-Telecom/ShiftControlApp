@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -12,6 +13,7 @@ import '../models/checklist_type.dart';
 import '../../../data/datasources/remote/placas_validar_remote_datasource.dart';
 import '../placa_validada_provider.dart';
 import '../turno_apertura_provider.dart';
+import '../turno_bitacora_helper.dart';
 import 'captura_odometro_colors.dart';
 import 'dashed_border_box.dart';
 import '../registro_combustible/registro_combustible_page.dart';
@@ -44,13 +46,33 @@ class CapturaOdometroPage extends ConsumerStatefulWidget {
 class _CapturaOdometroPageState extends ConsumerState<CapturaOdometroPage> {
   final ImagePicker _picker = ImagePicker();
   Uint8List? _fotoTablero;
-  String _kilometraje = '142.593';
+  String _kilometraje = '';
   bool _guardandoTablero = false;
+
+  bool get _esApertura => widget.checklistType == ChecklistType.apertura;
+
+  bool get _kilometrajeEnteroValido {
+    final valor = _kilometraje.trim();
+    if (valor.isEmpty) return false;
+    return int.tryParse(valor) != null;
+  }
+
+  bool get _puedeContinuar {
+    if (_guardandoTablero) return false;
+    if (!_esApertura) return true;
+    return _fotoTablero != null &&
+        _fotoTablero!.isNotEmpty &&
+        _kilometrajeEnteroValido;
+  }
 
   @override
   void initState() {
     super.initState();
-    if (widget.checklistType == ChecklistType.apertura) {
+    if (!_esApertura) {
+      _kilometraje = '142593';
+    }
+    if (widget.checklistType == ChecklistType.apertura ||
+        widget.checklistType == ChecklistType.cierre) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         ref
             .read(checklistProgressServiceProvider)
@@ -94,16 +116,14 @@ class _CapturaOdometroPageState extends ConsumerState<CapturaOdometroPage> {
       ),
     );
     if (result != null && result.isNotEmpty && mounted) {
-      setState(() => _kilometraje = result);
+      final soloEnteros = result.replaceAll(RegExp(r'[^0-9]'), '');
+      if (soloEnteros.isNotEmpty) {
+        setState(() => _kilometraje = soloEnteros);
+      }
     }
   }
 
   Future<void> _continuar() async {
-    if (widget.checklistType != ChecklistType.apertura) {
-      _navegarSiguiente();
-      return;
-    }
-
     if (_fotoTablero == null || _fotoTablero!.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -114,21 +134,22 @@ class _CapturaOdometroPageState extends ConsumerState<CapturaOdometroPage> {
       return;
     }
 
-    if (_kilometraje.trim().isEmpty) {
+    if (_kilometraje.trim().isEmpty || !_kilometrajeEnteroValido) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Ingresa el kilometraje antes de continuar.'),
+          content: Text('Ingrese el kilometraje antes de continuar.'),
           backgroundColor: Colors.red,
         ),
       );
       return;
     }
 
-    final idBitacora = ref.read(turnoAperturaProvider).idBitacoraApertura;
+    final idBitacora =
+        idBitacoraVehiculoParaChecklist(ref, widget.checklistType);
     if (idBitacora == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No hay bitácora de apertura. Completa el paso anterior.'),
+        SnackBar(
+          content: Text(mensajeBitacoraFaltante(widget.checklistType)),
           backgroundColor: Colors.red,
         ),
       );
@@ -482,6 +503,80 @@ class _CapturaOdometroPageState extends ConsumerState<CapturaOdometroPage> {
   }
 
   Widget _buildKilometraje(BuildContext context) {
+    if (_esApertura) {
+      return _buildKilometrajeApertura(context);
+    }
+    return _buildKilometrajeCierre(context);
+  }
+
+  Widget _buildKilometrajeApertura(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: CapturaOdometroColors.cardBackground(context),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '2. Kilometraje detectado',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: CapturaOdometroColors.textPrimary(context),
+                  fontWeight: FontWeight.bold,
+                ),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            decoration: BoxDecoration(
+              color: CapturaOdometroColors.background(context),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.speed, color: CapturaOdometroColors.textSecondary(context), size: 28),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: TextField(
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    enabled: !_guardandoTablero,
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                          color: CapturaOdometroColors.textPrimary(context),
+                          fontWeight: FontWeight.bold,
+                        ),
+                    decoration: InputDecoration(
+                      hintText: 'Ingrese el kilometraje',
+                      hintStyle: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            color: CapturaOdometroColors.textSecondary(context),
+                            fontWeight: FontWeight.w500,
+                          ),
+                      border: InputBorder.none,
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                    ),
+                    onChanged: (value) => setState(() => _kilometraje = value),
+                  ),
+                ),
+                Text(
+                  'km',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        color: CapturaOdometroColors.textSecondary(context),
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildKilometrajeCierre(BuildContext context) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
@@ -551,6 +646,7 @@ class _CapturaOdometroPageState extends ConsumerState<CapturaOdometroPage> {
   }
 
   Widget _buildSiguienteButton(BuildContext context) {
+    final puedeContinuar = _puedeContinuar;
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -558,11 +654,14 @@ class _CapturaOdometroPageState extends ConsumerState<CapturaOdometroPage> {
           width: double.infinity,
           height: 52,
           child: ElevatedButton(
-            onPressed: _guardandoTablero ? null : _continuar,
+            onPressed: puedeContinuar ? _continuar : null,
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF001C6A),
+              backgroundColor: puedeContinuar
+                  ? const Color(0xFF001C6A)
+                  : CapturaOdometroColors.textSecondary(context),
               foregroundColor: Colors.white,
               disabledBackgroundColor: CapturaOdometroColors.textSecondary(context),
+              disabledForegroundColor: Colors.white70,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),

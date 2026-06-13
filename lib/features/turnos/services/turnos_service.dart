@@ -20,6 +20,8 @@ import '../../../data/models/registrar_accesorios_vehiculo_request.dart';
 import '../../../data/models/registrar_accesorios_vehiculo_response.dart';
 import '../../../data/models/registrar_documentacion_vehiculo_request.dart';
 import '../../../data/models/registrar_documentacion_vehiculo_response.dart';
+import '../../../data/models/registrar_incidencia_gasolina_response.dart';
+import '../../../data/models/registrar_incidencia_response.dart';
 import '../../../data/models/registrar_luces_vehiculo_request.dart';
 import '../../../data/models/registrar_luces_vehiculo_response.dart';
 import '../../../data/models/registrar_niveles_fluidos_request.dart';
@@ -432,6 +434,196 @@ class TurnosService {
       );
       rethrow;
     }
+  }
+
+  /// Registra incidencia de gasolina durante turno activo.
+  /// POST /api/turnos/incidencias/gasolina (multipart/form-data)
+  Future<RegistrarIncidenciaGasolinaResponse> registrarIncidenciaGasolina({
+    required int idTurno,
+    required double latitud,
+    required double longitud,
+    required double kilometraje,
+    required double litrosCargados,
+    required double totalPagado,
+    required List<int> fotoTableroAntesBytes,
+    required List<int> fotoBombaBytes,
+    String fotoTableroFilename = 'tablero_antes.jpg',
+    String fotoBombaFilename = 'bomba.jpg',
+  }) async {
+    final token = await _tokenStorage.getToken();
+    if (token == null || token.isEmpty) {
+      throw const AuthException('Sesión expirada. Inicia sesión de nuevo.', '401');
+    }
+
+    final base = AppEnvironmentConfig.baseUrl.endsWith('/')
+        ? AppEnvironmentConfig.baseUrl
+        : '${AppEnvironmentConfig.baseUrl}/';
+    final uri = Uri.parse('${base}api/turnos/incidencias/gasolina');
+    final request = http.MultipartRequest('POST', uri);
+    request.headers['Accept'] = 'application/json';
+    request.headers['Authorization'] = 'Bearer $token';
+
+    request.fields['idTurno'] = idTurno.toString();
+    request.fields['latitud'] = latitud.toString();
+    request.fields['longitud'] = longitud.toString();
+    request.fields['kilometraje'] = kilometraje.toString();
+    request.fields['litrosCargados'] = litrosCargados.toString();
+    request.fields['totalPagado'] = totalPagado.toString();
+
+    request.files.add(http.MultipartFile.fromBytes(
+      'fotoTableroAntes',
+      Uint8List.fromList(fotoTableroAntesBytes),
+      filename: fotoTableroFilename,
+      contentType: MediaType('image', 'jpeg'),
+    ));
+    request.files.add(http.MultipartFile.fromBytes(
+      'fotoBomba',
+      Uint8List.fromList(fotoBombaBytes),
+      filename: fotoBombaFilename,
+      contentType: MediaType('image', 'jpeg'),
+    ));
+
+    debugPrint(
+      'TurnosService: POST /api/turnos/incidencias/gasolina idTurno=$idTurno, '
+      'lat=$latitud, lng=$longitud, km=$kilometraje, '
+      'litros=$litrosCargados, total=$totalPagado',
+    );
+
+    final streamed = await request.send();
+    final response = await http.Response.fromStream(streamed);
+
+    debugPrint(
+      'TurnosService: registrarIncidenciaGasolina statusCode=${response.statusCode}',
+    );
+
+    if (response.statusCode == 401) {
+      throw const AuthException('Sesión expirada. Inicia sesión de nuevo.', '401');
+    }
+    if (response.statusCode == 403) {
+      throw const AuthException('Acceso denegado.', '403');
+    }
+    if (response.statusCode == 404) {
+      throw const NetworkException('Turno no encontrado.', '404');
+    }
+    if (response.statusCode == 400) {
+      throw AuthException(
+        _parseMessage(response.body) ?? 'Datos inválidos.',
+        '400',
+      );
+    }
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      throw NetworkException(
+        _parseMessage(response.body) ??
+            'No fue posible registrar la incidencia de gasolina (${response.statusCode})',
+        '${response.statusCode}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    debugPrint('TurnosService: incidencia de gasolina registrada exitosamente');
+    return RegistrarIncidenciaGasolinaResponse.fromJson(data);
+  }
+
+  /// Registra incidencia de accidente durante turno activo.
+  /// POST /api/turnos/incidencias/accidente (multipart/form-data)
+  Future<RegistrarIncidenciaResponse> registrarIncidencia({
+    required int idTurno,
+    required String descripcion,
+    required double latitud,
+    required double longitud,
+    required List<int> fotoEvidencia1Bytes,
+    int? idCatTipoIncidente,
+    List<int>? fotoEvidencia2Bytes,
+    List<int>? fotoEvidencia3Bytes,
+    String fotoEvidencia1Filename = 'evidencia1.jpg',
+    String fotoEvidencia2Filename = 'evidencia2.jpg',
+    String fotoEvidencia3Filename = 'evidencia3.jpg',
+  }) async {
+    final token = await _tokenStorage.getToken();
+    if (token == null || token.isEmpty) {
+      throw const AuthException('Sesión expirada. Inicia sesión de nuevo.', '401');
+    }
+
+    final base = AppEnvironmentConfig.baseUrl.endsWith('/')
+        ? AppEnvironmentConfig.baseUrl
+        : '${AppEnvironmentConfig.baseUrl}/';
+    final uri = Uri.parse('${base}api/turnos/incidencias/accidente');
+    final request = http.MultipartRequest('POST', uri);
+    request.headers['Accept'] = 'application/json';
+    request.headers['Authorization'] = 'Bearer $token';
+
+    request.fields['idTurno'] = idTurno.toString();
+    request.fields['descripcion'] = descripcion;
+    request.fields['latitud'] = latitud.toString();
+    request.fields['longitud'] = longitud.toString();
+    if (idCatTipoIncidente != null) {
+      request.fields['idCatTipoIncidente'] = idCatTipoIncidente.toString();
+    }
+
+    request.files.add(http.MultipartFile.fromBytes(
+      'fotoEvidencia1',
+      Uint8List.fromList(fotoEvidencia1Bytes),
+      filename: fotoEvidencia1Filename,
+      contentType: MediaType('image', 'jpeg'),
+    ));
+
+    if (fotoEvidencia2Bytes != null && fotoEvidencia2Bytes.isNotEmpty) {
+      request.files.add(http.MultipartFile.fromBytes(
+        'fotoEvidencia2',
+        Uint8List.fromList(fotoEvidencia2Bytes),
+        filename: fotoEvidencia2Filename,
+        contentType: MediaType('image', 'jpeg'),
+      ));
+    }
+
+    if (fotoEvidencia3Bytes != null && fotoEvidencia3Bytes.isNotEmpty) {
+      request.files.add(http.MultipartFile.fromBytes(
+        'fotoEvidencia3',
+        Uint8List.fromList(fotoEvidencia3Bytes),
+        filename: fotoEvidencia3Filename,
+        contentType: MediaType('image', 'jpeg'),
+      ));
+    }
+
+    debugPrint(
+      'TurnosService: POST /api/turnos/incidencias/accidente idTurno=$idTurno, '
+      'idCatTipoIncidente=$idCatTipoIncidente, lat=$latitud, lng=$longitud, '
+      'fotos=${1 + (fotoEvidencia2Bytes != null ? 1 : 0) + (fotoEvidencia3Bytes != null ? 1 : 0)}',
+    );
+
+    final streamed = await request.send();
+    final response = await http.Response.fromStream(streamed);
+
+    debugPrint(
+      'TurnosService: registrarIncidencia statusCode=${response.statusCode}',
+    );
+
+    if (response.statusCode == 401) {
+      throw const AuthException('Sesión expirada. Inicia sesión de nuevo.', '401');
+    }
+    if (response.statusCode == 403) {
+      throw const AuthException('Acceso denegado.', '403');
+    }
+    if (response.statusCode == 404) {
+      throw const NetworkException('Turno no encontrado.', '404');
+    }
+    if (response.statusCode == 400) {
+      throw AuthException(
+        _parseMessage(response.body) ?? 'Datos inválidos.',
+        '400',
+      );
+    }
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      throw NetworkException(
+        _parseMessage(response.body) ??
+            'No fue posible registrar la incidencia (${response.statusCode})',
+        '${response.statusCode}',
+      );
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    debugPrint('TurnosService: incidencia registrada exitosamente');
+    return RegistrarIncidenciaResponse.fromJson(data);
   }
 
   /// Cierre geográfico del turno.

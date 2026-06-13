@@ -11,3 +11,10 @@ int? idBitacoraVehiculoParaChecklist(WidgetRef ref, ChecklistType checklistType)
   }
   return ref.read(turnoAperturaProvider).idBitacoraApertura;
 }
+
+String mensajeBitacoraFaltante(ChecklistType checklistType) {
+  if (checklistType == ChecklistType.cierre) {
+    return 'No hay bitácora de cierre. Completa el cierre geográfico.';
+  }
+  return 'No hay bitácora de apertura. Completa el paso anterior.';
+}

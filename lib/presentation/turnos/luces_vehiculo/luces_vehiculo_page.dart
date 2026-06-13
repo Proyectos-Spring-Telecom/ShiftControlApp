@@ -7,7 +7,7 @@ import '../checklist_apertura_navigation.dart';
 import '../checklist_progress_provider.dart';
 import '../mi_turno_provider.dart';
 import '../models/checklist_type.dart';
-import '../turno_apertura_provider.dart';
+import '../turno_bitacora_helper.dart';
 import 'luces_vehiculo_colors.dart';
 
 class LucesVehiculoPage extends ConsumerStatefulWidget {
@@ -30,7 +30,8 @@ class _LucesVehiculoPageState extends ConsumerState<LucesVehiculoPage> {
   @override
   void initState() {
     super.initState();
-    if (widget.checklistType == ChecklistType.apertura) {
+    if (widget.checklistType == ChecklistType.apertura ||
+        widget.checklistType == ChecklistType.cierre) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         ref
             .read(checklistProgressServiceProvider)
@@ -58,16 +59,12 @@ class _LucesVehiculoPageState extends ConsumerState<LucesVehiculoPage> {
   }
 
   Future<void> _continuar() async {
-    if (widget.checklistType != ChecklistType.apertura) {
-      _navegarSiguiente();
-      return;
-    }
-
-    final idBitacora = ref.read(turnoAperturaProvider).idBitacoraApertura;
+    final idBitacora =
+        idBitacoraVehiculoParaChecklist(ref, widget.checklistType);
     if (idBitacora == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No hay bitácora de apertura. Completa el paso anterior.'),
+        SnackBar(
+          content: Text(mensajeBitacoraFaltante(widget.checklistType)),
           backgroundColor: Colors.red,
         ),
       );

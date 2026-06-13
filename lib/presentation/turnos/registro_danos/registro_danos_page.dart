@@ -34,7 +34,8 @@ class _RegistroDanosPageState extends ConsumerState<RegistroDanosPage> {
       points: _generateInitialPoints(),
       currentView: VehicleView.frontal,
     );
-    if (widget.checklistType == ChecklistType.apertura) {
+    if (widget.checklistType == ChecklistType.apertura ||
+        widget.checklistType == ChecklistType.cierre) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         ref
             .read(checklistProgressServiceProvider)

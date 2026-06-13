@@ -126,7 +126,20 @@ class _ControlTurnosPageState extends ConsumerState<ControlTurnosPage> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(miTurnoActivoProvider.notifier).fetch();
+      _retomarCierreSiAplica();
     });
+  }
+
+  void _retomarCierreSiAplica() {
+    if (!mounted) return;
+    final progreso = ref.read(checklistProgressServiceProvider).leerProgreso();
+    if (progreso == null ||
+        !progreso.esCierre ||
+        !progreso.tieneProgresoIncompleto) {
+      return;
+    }
+    _restaurarProgresoEnProvider(progreso);
+    _navegarAPasoCierre(context, progreso.pasoActual);
   }
 
   @override

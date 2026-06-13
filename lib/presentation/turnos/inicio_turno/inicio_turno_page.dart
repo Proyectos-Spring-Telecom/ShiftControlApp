@@ -593,21 +593,6 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        RichText(
-          text: TextSpan(
-            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  color: InicioTurnoColors.textPrimary(context),
-                ),
-            children: const [
-              TextSpan(
-                text: 'Folio: ',
-                style: TextStyle(color: InicioTurnoColors.accent, fontWeight: FontWeight.w600),
-              ),
-              TextSpan(text: 'Pendiente'),
-            ],
-          ),
-        ),
-        const SizedBox(height: 8),
         Text(
           'Fecha: ${formatearFechaHoraActual()}',
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(

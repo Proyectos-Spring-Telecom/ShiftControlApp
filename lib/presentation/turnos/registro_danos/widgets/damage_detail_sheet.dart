@@ -10,7 +10,7 @@ import '../../../../core/utils/read_file_bytes_stub.dart'
 import '../../captura_odometro/dashed_border_box.dart';
 import '../../mi_turno_provider.dart';
 import '../../models/checklist_type.dart';
-import '../../turno_apertura_provider.dart';
+import '../../turno_bitacora_helper.dart';
 import '../models/damage_point_model.dart';
 import '../registro_danos_colors.dart';
 
@@ -126,12 +126,14 @@ class _DamageDetailSheetState extends ConsumerState<DamageDetailSheet> {
     final parte = _parteAfectadaController.text.trim();
     final fotoBytes = _photoBytes!;
 
-    if (widget.checklistType == ChecklistType.apertura) {
-      final idBitacora = ref.read(turnoAperturaProvider).idBitacoraApertura;
+    if (widget.checklistType == ChecklistType.apertura ||
+        widget.checklistType == ChecklistType.cierre) {
+      final idBitacora =
+          idBitacoraVehiculoParaChecklist(ref, widget.checklistType);
       if (idBitacora == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No hay bitácora de apertura. Completa el paso anterior.'),
+          SnackBar(
+            content: Text(mensajeBitacoraFaltante(widget.checklistType)),
             backgroundColor: Colors.red,
           ),
         );

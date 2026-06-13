@@ -5,6 +5,7 @@ import 'package:quickalert/quickalert.dart';
 
 import '../../../core/errors/app_exception.dart';
 import '../../../core/utils/date_format_utils.dart';
+import '../../../data/models/cerrar_bitacora_response.dart';
 import '../../../data/models/informacion_general_response.dart';
 import '../indicadores_testigo/indicadores_testigo_colors.dart';
 import '../checklist_apertura_navigation.dart';
@@ -38,6 +39,10 @@ class _ResumenTurnoPageState extends ConsumerState<ResumenTurnoPage> {
         ref
             .read(checklistProgressServiceProvider)
             .actualizarPaso(ChecklistAperturaPasos.resumen);
+      } else if (widget.checklistType == ChecklistType.cierre) {
+        ref
+            .read(checklistProgressServiceProvider)
+            .actualizarPaso(ChecklistCierrePasos.resumen);
       }
       _cargarInformacionGeneral();
     });
@@ -706,6 +711,73 @@ class _ResumenTurnoPageState extends ConsumerState<ResumenTurnoPage> {
                   confirmBtnText: 'Aceptar',
                 );
               } else {
+                final idBitacora =
+                    ref.read(turnoCierreProvider).idBitacoraCierre;
+                if (idBitacora == null) {
+                  await QuickAlert.show(
+                    context: context,
+                    type: QuickAlertType.error,
+                    title: 'Error',
+                    text:
+                        'No hay bitácora de cierre. Completa el cierre geográfico.',
+                    confirmBtnText: 'Aceptar',
+                  );
+                  return;
+                }
+
+                CerrarBitacoraResponse? cierreResponse;
+                try {
+                  cierreResponse = await ref
+                      .read(turnosServiceProvider)
+                      .cerrarBitacoraApertura(
+                        idBitacoraVehiculo: idBitacora,
+                      );
+                } on AuthException catch (e) {
+                  if (!context.mounted) return;
+                  await QuickAlert.show(
+                    context: context,
+                    type: QuickAlertType.error,
+                    title: 'Error',
+                    text: e.message,
+                    confirmBtnText: 'Aceptar',
+                  );
+                  return;
+                } on NetworkException catch (e) {
+                  if (!context.mounted) return;
+                  await QuickAlert.show(
+                    context: context,
+                    type: QuickAlertType.error,
+                    title: 'Error',
+                    text: e.message,
+                    confirmBtnText: 'Aceptar',
+                  );
+                  return;
+                } catch (e) {
+                  if (!context.mounted) return;
+                  await QuickAlert.show(
+                    context: context,
+                    type: QuickAlertType.error,
+                    title: 'Error',
+                    text:
+                        'No fue posible cerrar la bitácora. Intenta nuevamente.',
+                    confirmBtnText: 'Aceptar',
+                  );
+                  return;
+                }
+
+                if (cierreResponse.flujo != 'cierre') {
+                  if (!context.mounted) return;
+                  await QuickAlert.show(
+                    context: context,
+                    type: QuickAlertType.error,
+                    title: 'Error',
+                    text:
+                        'No fue posible finalizar el cierre del turno. Intenta nuevamente.',
+                    confirmBtnText: 'Aceptar',
+                  );
+                  return;
+                }
+
                 await ref.read(checklistProgressServiceProvider).limpiar();
                 ref.read(turnoAperturaProvider.notifier).state =
                     const TurnoAperturaState();

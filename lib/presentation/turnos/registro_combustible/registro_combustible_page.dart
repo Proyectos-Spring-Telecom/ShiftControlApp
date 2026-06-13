@@ -1,22 +1,54 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../../core/errors/app_exception.dart';
+import '../checklist_progress_provider.dart';
+import '../mi_turno_provider.dart';
+import '../turno_apertura_provider.dart';
 import 'registro_combustible_colors.dart';
+import 'registro_combustible_provider.dart';
 import '../captura_odometro/dashed_border_box.dart';
 
-class RegistroCombustiblePage extends StatefulWidget {
+class RegistroCombustiblePage extends ConsumerStatefulWidget {
   const RegistroCombustiblePage({super.key});
 
   @override
-  State<RegistroCombustiblePage> createState() => _RegistroCombustiblePageState();
+  ConsumerState<RegistroCombustiblePage> createState() =>
+      _RegistroCombustiblePageState();
 }
 
-class _RegistroCombustiblePageState extends State<RegistroCombustiblePage> {
+class _RegistroCombustiblePageState extends ConsumerState<RegistroCombustiblePage> {
   final ImagePicker _picker = ImagePicker();
   Uint8List? _fotoBomba;
   Uint8List? _fotoTablero;
+  bool _guardando = false;
+
+  late final TextEditingController _litrosController;
+  late final TextEditingController _totalController;
+  late final TextEditingController _kilometrajeController;
+
+  @override
+  void initState() {
+    super.initState();
+    _litrosController = TextEditingController();
+    _totalController = TextEditingController();
+    _kilometrajeController = TextEditingController();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(miTurnoActivoProvider.notifier).fetch();
+    });
+  }
+
+  @override
+  void dispose() {
+    _litrosController.dispose();
+    _totalController.dispose();
+    _kilometrajeController.dispose();
+    super.dispose();
+  }
 
   Future<void> _tomarFotoBomba() async {
     final XFile? photo = await _picker.pickImage(source: ImageSource.camera);
@@ -31,6 +63,196 @@ class _RegistroCombustiblePageState extends State<RegistroCombustiblePage> {
     if (photo != null && mounted) {
       final bytes = await photo.readAsBytes();
       if (mounted) setState(() => _fotoTablero = bytes);
+    }
+  }
+
+  int? _obtenerIdTurno() {
+    final miTurno = ref.read(miTurnoActivoProvider).valueOrNull;
+    if (miTurno?.idTurno != null) return miTurno!.idTurno;
+
+    final desdeApertura = ref.read(turnoAperturaProvider).idTurno;
+    if (desdeApertura != null) return desdeApertura;
+
+    return ref.read(checklistProgressServiceProvider).leerProgreso()?.idTurno;
+  }
+
+  Future<Position?> _obtenerUbicacion() async {
+    try {
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Se necesita permiso de ubicación para registrar combustible.',
+                ),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return null;
+        }
+      }
+      if (permission == LocationPermission.deniedForever) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Permisos de ubicación denegados permanentemente. Actívalos en Configuración.',
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return null;
+      }
+      return await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+      );
+    } catch (e) {
+      debugPrint('Error obteniendo ubicación: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('No se pudo obtener la ubicación: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return null;
+    }
+  }
+
+  double? _parseDecimal(String raw) {
+    final cleaned = raw.trim().replaceAll(RegExp(r'[^\d.,]'), '').replaceAll(',', '');
+    if (cleaned.isEmpty) return null;
+    return double.tryParse(cleaned);
+  }
+
+  Future<void> _guardarRegistro() async {
+    if (_fotoTablero == null || _fotoTablero!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Debe adjuntar la imagen fotoTableroAntes.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    if (_fotoBomba == null || _fotoBomba!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Debe adjuntar la imagen fotoBomba.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final litrosCargados = _parseDecimal(_litrosController.text);
+    if (litrosCargados == null || litrosCargados < 0.001) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Los litros cargados deben ser al menos 0.001.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final totalPagado = _parseDecimal(_totalController.text);
+    if (totalPagado == null || totalPagado < 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('El total pagado debe ser mayor o igual a 0.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final kilometraje = _parseDecimal(_kilometrajeController.text);
+    if (kilometraje == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Ingresa el kilometraje actual antes de guardar.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final idTurno = _obtenerIdTurno();
+    if (idTurno == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No hay turno activo. Inicia un turno para continuar.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _guardando = true);
+
+    final position = await _obtenerUbicacion();
+    if (position == null) {
+      if (mounted) setState(() => _guardando = false);
+      return;
+    }
+
+    try {
+      final response = await ref.read(turnosServiceProvider).registrarIncidenciaGasolina(
+            idTurno: idTurno,
+            latitud: position.latitude,
+            longitud: position.longitude,
+            kilometraje: kilometraje,
+            litrosCargados: litrosCargados,
+            totalPagado: totalPagado,
+            fotoTableroAntesBytes: _fotoTablero!,
+            fotoBombaBytes: _fotoBomba!,
+          );
+
+      if (!mounted) return;
+      setState(() => _guardando = false);
+
+      if (response.id != null) {
+        ref.read(registroCombustibleProvider.notifier).state = response.id;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            response.message ?? 'Incidencia de gasolina registrada correctamente',
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+      Navigator.of(context).pop();
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      setState(() => _guardando = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message), backgroundColor: Colors.red),
+      );
+    } on NetworkException catch (e) {
+      if (!mounted) return;
+      setState(() => _guardando = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message), backgroundColor: Colors.red),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _guardando = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No fue posible registrar la incidencia: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
@@ -201,31 +423,38 @@ class _RegistroCombustiblePageState extends State<RegistroCombustiblePage> {
               Icon(Icons.description_outlined, color: RegistroCombustibleColors.textPrimary(context), size: 22),
               const SizedBox(width: 8),
               Text(
-                'Datos detectados (OCR)',
+                'Datos detectados',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       color: RegistroCombustibleColors.textPrimary(context),
                       fontWeight: FontWeight.bold,
                     ),
               ),
-              const Spacer(),
-              TextButton(
-                onPressed: () {},
-                style: TextButton.styleFrom(
-                  foregroundColor: RegistroCombustibleColors.accentRed,
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                child: const Text('Reescanear'),
-              ),
             ],
           ),
           const SizedBox(height: 16),
-          _buildOcrField(context, 'Litros cargados', '45.50', 'LTS'),
+          _buildOcrField(
+            context,
+            'Litros cargados',
+            _litrosController,
+            'LTS',
+            hint: 'Ej: 45.50',
+          ),
           const SizedBox(height: 12),
-          _buildOcrField(context, 'Total pagado', r'$1,092.00', 'MXN'),
+          _buildOcrField(
+            context,
+            'Total pagado',
+            _totalController,
+            'MXN',
+            hint: 'Ej: 1092.00',
+          ),
           const SizedBox(height: 12),
-          _buildOcrField(context, 'Kilometraje actual', null, 'KM', hint: 'Ej: 154032'),
+          _buildOcrField(
+            context,
+            'Kilometraje actual',
+            _kilometrajeController,
+            'KM',
+            hint: 'Ej: 154032',
+          ),
         ],
       ),
     );
@@ -234,11 +463,10 @@ class _RegistroCombustiblePageState extends State<RegistroCombustiblePage> {
   Widget _buildOcrField(
     BuildContext context,
     String label,
-    String? value,
+    TextEditingController controller,
     String suffix, {
     String? hint,
   }) {
-    final isEditable = hint != null && value == null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -259,25 +487,21 @@ class _RegistroCombustiblePageState extends State<RegistroCombustiblePage> {
           child: Row(
             children: [
               Expanded(
-                child: isEditable
-                    ? TextField(
-                        style: TextStyle(color: RegistroCombustibleColors.textPrimary(context)),
-                        decoration: InputDecoration(
-                          hintText: hint,
-                          hintStyle: TextStyle(color: RegistroCombustibleColors.textSecondary(context)),
-                          border: InputBorder.none,
-                          contentPadding: const EdgeInsets.symmetric(vertical: 14),
-                          isDense: true,
-                          filled: true,
-                          fillColor: RegistroCombustibleColors.inputBackground(context),
-                        ),
-                      )
-                    : Text(
-                        value ?? '',
-                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                              color: RegistroCombustibleColors.textPrimary(context),
-                            ),
-                      ),
+                child: TextField(
+                  controller: controller,
+                  enabled: !_guardando,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  style: TextStyle(color: RegistroCombustibleColors.textPrimary(context)),
+                  decoration: InputDecoration(
+                    hintText: hint,
+                    hintStyle: TextStyle(color: RegistroCombustibleColors.textSecondary(context)),
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                    isDense: true,
+                    filled: true,
+                    fillColor: RegistroCombustibleColors.inputBackground(context),
+                  ),
+                ),
               ),
               const SizedBox(width: 8),
               Text(
@@ -338,27 +562,39 @@ class _RegistroCombustiblePageState extends State<RegistroCombustiblePage> {
           width: double.infinity,
           height: 52,
           child: ElevatedButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-            },
+            onPressed: _guardando ? null : _guardarRegistro,
             style: ElevatedButton.styleFrom(
               backgroundColor: RegistroCombustibleColors.buttonSiguiente,
               foregroundColor: Colors.white,
+              disabledBackgroundColor: RegistroCombustibleColors.buttonSiguiente.withValues(alpha: 0.6),
+              disabledForegroundColor: Colors.white70,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.save_outlined, size: 20),
-                const SizedBox(width: 8),
-                Text(
-                  'Guardar Registro',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: Colors.white),
-                ),
-              ],
-            ),
+            child: _guardando
+                ? const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2.5,
+                    ),
+                  )
+                : Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.save_outlined, size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Guardar Registro',
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                      ),
+                    ],
+                  ),
           ),
         ),
       ),

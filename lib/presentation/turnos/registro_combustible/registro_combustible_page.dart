@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import '../../widgets/app_alert_banner.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
@@ -25,11 +26,31 @@ class _RegistroCombustiblePageState extends ConsumerState<RegistroCombustiblePag
   final ImagePicker _picker = ImagePicker();
   Uint8List? _fotoBomba;
   Uint8List? _fotoTablero;
+  Position? _cachedPosition;
   bool _guardando = false;
 
   late final TextEditingController _litrosController;
   late final TextEditingController _totalController;
   late final TextEditingController _kilometrajeController;
+
+  bool get _puedeGuardar {
+    if (_guardando) return false;
+    if (_obtenerIdTurno() == null) return false;
+    if (_cachedPosition == null) return false;
+    if (_fotoTablero == null || _fotoTablero!.isEmpty) return false;
+    if (_fotoBomba == null || _fotoBomba!.isEmpty) return false;
+
+    final litrosCargados = _parseDecimal(_litrosController.text);
+    if (litrosCargados == null || litrosCargados < 0.001) return false;
+
+    final totalPagado = _parseDecimal(_totalController.text);
+    if (totalPagado == null || totalPagado < 0) return false;
+
+    final kilometraje = _parseDecimal(_kilometrajeController.text);
+    if (kilometraje == null || kilometraje <= 0) return false;
+
+    return true;
+  }
 
   @override
   void initState() {
@@ -37,13 +58,31 @@ class _RegistroCombustiblePageState extends ConsumerState<RegistroCombustiblePag
     _litrosController = TextEditingController();
     _totalController = TextEditingController();
     _kilometrajeController = TextEditingController();
+    _litrosController.addListener(_onFormChanged);
+    _totalController.addListener(_onFormChanged);
+    _kilometrajeController.addListener(_onFormChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(miTurnoActivoProvider.notifier).fetch();
+      _inicializarUbicacion();
     });
+  }
+
+  void _onFormChanged() {
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _inicializarUbicacion() async {
+    final position = await _obtenerUbicacion();
+    if (position != null && mounted) {
+      setState(() => _cachedPosition = position);
+    }
   }
 
   @override
   void dispose() {
+    _litrosController.removeListener(_onFormChanged);
+    _totalController.removeListener(_onFormChanged);
+    _kilometrajeController.removeListener(_onFormChanged);
     _litrosController.dispose();
     _totalController.dispose();
     _kilometrajeController.dispose();
@@ -83,28 +122,14 @@ class _RegistroCombustiblePageState extends ConsumerState<RegistroCombustiblePag
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                  'Se necesita permiso de ubicación para registrar combustible.',
-                ),
-                backgroundColor: Colors.red,
-              ),
-            );
+            showAppAlertError(context, message: 'Se necesita permiso de ubicación para registrar combustible.');
           }
           return null;
         }
       }
       if (permission == LocationPermission.deniedForever) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Permisos de ubicación denegados permanentemente. Actívalos en Configuración.',
-              ),
-              backgroundColor: Colors.red,
-            ),
-          );
+          showAppAlertError(context, message: 'Permisos de ubicación denegados permanentemente. Actívalos en Configuración.');
         }
         return null;
       }
@@ -114,12 +139,7 @@ class _RegistroCombustiblePageState extends ConsumerState<RegistroCombustiblePag
     } catch (e) {
       debugPrint('Error obteniendo ubicación: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('No se pudo obtener la ubicación: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        showAppAlertError(context, message: 'No se pudo obtener la ubicación: $e');
       }
       return null;
     }
@@ -133,66 +153,36 @@ class _RegistroCombustiblePageState extends ConsumerState<RegistroCombustiblePag
 
   Future<void> _guardarRegistro() async {
     if (_fotoTablero == null || _fotoTablero!.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Debe adjuntar la imagen fotoTableroAntes.'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      showAppAlertError(context, message: 'Debe adjuntar la imagen fotoTableroAntes.');
       return;
     }
 
     if (_fotoBomba == null || _fotoBomba!.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Debe adjuntar la imagen fotoBomba.'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      showAppAlertError(context, message: 'Debe adjuntar la imagen fotoBomba.');
       return;
     }
 
     final litrosCargados = _parseDecimal(_litrosController.text);
     if (litrosCargados == null || litrosCargados < 0.001) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Los litros cargados deben ser al menos 0.001.'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      showAppAlertError(context, message: 'Los litros cargados deben ser al menos 0.001.');
       return;
     }
 
     final totalPagado = _parseDecimal(_totalController.text);
     if (totalPagado == null || totalPagado < 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('El total pagado debe ser mayor o igual a 0.'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      showAppAlertError(context, message: 'El total pagado debe ser mayor o igual a 0.');
       return;
     }
 
     final kilometraje = _parseDecimal(_kilometrajeController.text);
     if (kilometraje == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Ingresa el kilometraje actual antes de guardar.'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      showAppAlertError(context, message: 'Ingresa el kilometraje actual antes de guardar.');
       return;
     }
 
     final idTurno = _obtenerIdTurno();
     if (idTurno == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No hay turno activo. Inicia un turno para continuar.'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      showAppAlertError(context, message: 'No hay turno activo. Inicia un turno para continuar.');
       return;
     }
 
@@ -223,41 +213,27 @@ class _RegistroCombustiblePageState extends ConsumerState<RegistroCombustiblePag
         ref.read(registroCombustibleProvider.notifier).state = response.id;
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            response.message ?? 'Incidencia de gasolina registrada correctamente',
-          ),
-          backgroundColor: Colors.green,
-        ),
-      );
+      showAppAlertSuccess(context, message: response.message ?? 'Incidencia de gasolina registrada correctamente');
       Navigator.of(context).pop();
     } on AuthException catch (e) {
       if (!mounted) return;
       setState(() => _guardando = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message), backgroundColor: Colors.red),
-      );
+      showAppAlertError(context, message: e.message);
     } on NetworkException catch (e) {
       if (!mounted) return;
       setState(() => _guardando = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message), backgroundColor: Colors.red),
-      );
+      showAppAlertError(context, message: e.message);
     } catch (e) {
       if (!mounted) return;
       setState(() => _guardando = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('No fue posible registrar la incidencia: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      showAppAlertError(context, message: 'No fue posible registrar la incidencia: $e');
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(miTurnoActivoProvider);
+    ref.watch(turnoAperturaProvider);
     return Scaffold(
       backgroundColor: RegistroCombustibleColors.background(context),
       appBar: AppBar(
@@ -562,11 +538,11 @@ class _RegistroCombustiblePageState extends ConsumerState<RegistroCombustiblePag
           width: double.infinity,
           height: 52,
           child: ElevatedButton(
-            onPressed: _guardando ? null : _guardarRegistro,
+            onPressed: _puedeGuardar ? _guardarRegistro : null,
             style: ElevatedButton.styleFrom(
               backgroundColor: RegistroCombustibleColors.buttonSiguiente,
               foregroundColor: Colors.white,
-              disabledBackgroundColor: RegistroCombustibleColors.buttonSiguiente.withValues(alpha: 0.6),
+              disabledBackgroundColor: RegistroCombustibleColors.textSecondary(context),
               disabledForegroundColor: Colors.white70,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -618,7 +594,6 @@ class _FotoCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DashedBorderBox(
-      height: 140,
       child: Material(
         color: RegistroCombustibleColors.progressUnfilled(context),
         child: InkWell(

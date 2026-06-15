@@ -1,6 +1,8 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import '../../../widgets/app_alert_banner.dart';
+import '../../../widgets/captured_evidence_image.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -131,12 +133,7 @@ class _DamageDetailSheetState extends ConsumerState<DamageDetailSheet> {
       final idBitacora =
           idBitacoraVehiculoParaChecklist(ref, widget.checklistType);
       if (idBitacora == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(mensajeBitacoraFaltante(widget.checklistType)),
-            backgroundColor: Colors.red,
-          ),
-        );
+        showAppAlertError(context, message: mensajeBitacoraFaltante(widget.checklistType));
         return;
       }
 
@@ -159,24 +156,15 @@ class _DamageDetailSheetState extends ConsumerState<DamageDetailSheet> {
       } on AuthException catch (e) {
         if (!mounted) return;
         setState(() => _guardando = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message), backgroundColor: Colors.red),
-        );
+        showAppAlertError(context, message: e.message);
       } on NetworkException catch (e) {
         if (!mounted) return;
         setState(() => _guardando = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message), backgroundColor: Colors.red),
-        );
+        showAppAlertError(context, message: e.message);
       } catch (e) {
         if (!mounted) return;
         setState(() => _guardando = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error al registrar daño: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        showAppAlertError(context, message: 'Error al registrar daño: $e');
       }
       return;
     }
@@ -397,17 +385,8 @@ class _DamageDetailSheetState extends ConsumerState<DamageDetailSheet> {
         GestureDetector(
           onTap: _takePhoto,
           child: _photoBytes != null
-              ? ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Image.memory(
-                    _photoBytes!,
-                    height: 100,
-                    width: double.infinity,
-                    fit: BoxFit.cover,
-                  ),
-                )
+              ? CapturedEvidenceImage(bytes: _photoBytes!)
               : DashedBorderBox(
-                  height: 100,
                   child: Container(
                     color: RegistroDanosColors.cardBackground(context),
                     alignment: Alignment.center,

@@ -696,7 +696,9 @@ class _ResumenTurnoPageState extends ConsumerState<ResumenTurnoPage> {
                   return;
                 }
 
-                await ref.read(checklistProgressServiceProvider).limpiar();
+                await ref.read(checklistProgressServiceProvider).limpiar(
+                      preservarDatosVehiculo: true,
+                    );
                 ref.read(turnoAperturaProvider.notifier).state =
                     const TurnoAperturaState();
                 ref.read(turnoStatusProvider.notifier).state = TurnoStatus.enTurno;

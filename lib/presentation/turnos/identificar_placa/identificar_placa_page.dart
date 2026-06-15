@@ -83,12 +83,7 @@ class _IdentificarPlacaPageState extends ConsumerState<IdentificarPlacaPage> {
     final token = await ref.read(authLocalDatasourceProvider).getStoredToken();
     if (token == null || token.isEmpty) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Sesión expirada. Inicie sesión de nuevo.'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        showAppAlertError(context, message: 'Sesión expirada. Inicie sesión de nuevo.');
       }
       return;
     }
@@ -106,12 +101,7 @@ class _IdentificarPlacaPageState extends ConsumerState<IdentificarPlacaPage> {
       if (imageBytes.isEmpty) {
         setState(() => _isLoading = false);
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('No se pudo capturar la imagen. Intente de nuevo.'),
-              backgroundColor: Colors.red,
-            ),
-          );
+          showAppAlertError(context, message: 'No se pudo capturar la imagen. Intente de nuevo.');
         }
         return;
       }
@@ -119,12 +109,7 @@ class _IdentificarPlacaPageState extends ConsumerState<IdentificarPlacaPage> {
       if (imageBytes.length < 500) {
         setState(() => _isLoading = false);
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('La imagen capturada no es válida. Coloque la placa en el marco y toque Reintentar.'),
-              backgroundColor: Colors.red,
-            ),
-          );
+          showAppAlertError(context, message: 'La imagen capturada no es válida. Coloque la placa en el marco y toque Reintentar.');
         }
         return;
       }
@@ -137,12 +122,7 @@ class _IdentificarPlacaPageState extends ConsumerState<IdentificarPlacaPage> {
         setState(() => _isLoading = false);
         debugPrint('Plate read: imagen sin firma JPEG válida (primeros bytes: ${imageBytes.take(3).toList()})');
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Formato de imagen no válido. Toque Reintentar.'),
-              backgroundColor: Colors.red,
-            ),
-          );
+          showAppAlertError(context, message: 'Formato de imagen no válido. Toque Reintentar.');
         }
         return;
       }
@@ -196,9 +176,7 @@ class _IdentificarPlacaPageState extends ConsumerState<IdentificarPlacaPage> {
     } on AuthException catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message), backgroundColor: Colors.red),
-        );
+        showAppAlertError(context, message: e.message);
       }
     } on NetworkException catch (e) {
       if (!mounted) return;
@@ -212,18 +190,11 @@ class _IdentificarPlacaPageState extends ConsumerState<IdentificarPlacaPage> {
       } else if (e.code == '503') {
         msg = 'Servicio no disponible. Intente más tarde.';
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(msg), backgroundColor: Colors.red),
-      );
+      showAppAlertError(context, message: msg);
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Error al leer la placa. Intente de nuevo.'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        showAppAlertError(context, message: 'Error al leer la placa. Intente de nuevo.');
       }
     }
   }

@@ -2,38 +2,50 @@ import 'package:flutter/material.dart';
 
 import 'captura_odometro_colors.dart';
 
-/// Contenedor con borde punteado para zona de foto.
+/// Contenedor con borde punteado para zona de foto (proporción rectangular 16:9).
 class DashedBorderBox extends StatelessWidget {
   const DashedBorderBox({
     super.key,
     required this.child,
-    this.height = 220,
+    this.aspectRatio = 16 / 9,
+    this.height,
   });
 
   final Widget child;
-  final double height;
+  final double aspectRatio;
+  /// Si se define, se usa altura fija en lugar de [aspectRatio] (compatibilidad).
+  final double? height;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: height,
-      width: double.infinity,
-      child: CustomPaint(
-        painter: _DashedRectPainter(
-          color: CapturaOdometroColors.dashedBorder(context),
-          strokeWidth: 2,
-          gap: 6,
-          dashLength: 8,
-          radius: 12,
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(2),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: child,
-          ),
+    final painted = CustomPaint(
+      painter: _DashedRectPainter(
+        color: CapturaOdometroColors.dashedBorder(context),
+        strokeWidth: 2,
+        gap: 6,
+        dashLength: 8,
+        radius: 12,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(2),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: child,
         ),
       ),
+    );
+
+    if (height != null) {
+      return SizedBox(
+        height: height,
+        width: double.infinity,
+        child: painted,
+      );
+    }
+
+    return AspectRatio(
+      aspectRatio: aspectRatio,
+      child: painted,
     );
   }
 }

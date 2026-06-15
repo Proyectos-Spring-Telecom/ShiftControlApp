@@ -178,3 +178,48 @@ void showAppAlertBanner(
 
   Overlay.of(context).insert(entry);
 }
+
+/// Banner de éxito (reemplazo visual de SnackBar verde).
+void showAppAlertSuccess(
+  BuildContext context, {
+  String title = 'Éxito',
+  required String message,
+}) {
+  if (!context.mounted) return;
+  showAppAlertBanner(
+    context,
+    type: AppAlertType.success,
+    title: title,
+    message: message,
+  );
+}
+
+/// Banner de error (reemplazo visual de SnackBar rojo).
+void showAppAlertError(
+  BuildContext context, {
+  String title = 'Error',
+  required String message,
+}) {
+  if (!context.mounted) return;
+  showAppAlertBanner(
+    context,
+    type: AppAlertType.error,
+    title: title,
+    message: message,
+  );
+}
+
+/// Banner informativo (reemplazo visual de SnackBar de advertencia/info).
+void showAppAlertInfo(
+  BuildContext context, {
+  String title = 'Información',
+  required String message,
+}) {
+  if (!context.mounted) return;
+  showAppAlertBanner(
+    context,
+    type: AppAlertType.info,
+    title: title,
+    message: message,
+  );
+}

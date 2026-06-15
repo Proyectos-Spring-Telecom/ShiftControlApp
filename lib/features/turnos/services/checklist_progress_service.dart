@@ -45,23 +45,13 @@ class ChecklistProgressService {
 
   final SharedPreferences _prefs;
 
-  Future<void> guardarInicio({
-    required int idTurno,
-    required int idBitacoraApertura,
+  Future<void> _escribirDatosVehiculoEnPrefs({
     String? placa,
     String? numeroEconomico,
     String? modeloNombre,
     String? marcaNombre,
     int? anio,
   }) async {
-    await _prefs.setInt(AppConstants.keyChecklistIdTurno, idTurno);
-    await _prefs.setInt(
-      AppConstants.keyChecklistIdBitacoraApertura,
-      idBitacoraApertura,
-    );
-    await _prefs.setInt(AppConstants.keyChecklistPasoActual, 2);
-    await _prefs.setBool(AppConstants.keyChecklistCompleto, false);
-    await _prefs.setBool(AppConstants.keyChecklistEsCierre, false);
     if (placa != null) {
       await _prefs.setString(AppConstants.keyChecklistPlaca, placa);
     }
@@ -88,6 +78,75 @@ class ChecklistProgressService {
     }
   }
 
+  ChecklistProgress? _leerDatosVehiculoDesdePrefs() {
+    final placa = _prefs.getString(AppConstants.keyChecklistPlaca);
+    final numeroEconomico =
+        _prefs.getString(AppConstants.keyChecklistNumeroEconomico);
+    final modeloNombre =
+        _prefs.getString(AppConstants.keyChecklistModeloNombre);
+    final marcaNombre = _prefs.getString(AppConstants.keyChecklistMarcaNombre);
+    final anio = _prefs.getInt(AppConstants.keyChecklistAnio);
+    if (placa == null &&
+        numeroEconomico == null &&
+        modeloNombre == null &&
+        marcaNombre == null &&
+        anio == null) {
+      return null;
+    }
+    return ChecklistProgress(
+      placa: placa,
+      numeroEconomico: numeroEconomico,
+      modeloNombre: modeloNombre,
+      marcaNombre: marcaNombre,
+      anio: anio,
+    );
+  }
+
+  /// Datos del vehículo guardados en apertura (SharedPreferences).
+  ChecklistProgress? leerDatosVehiculo() => _leerDatosVehiculoDesdePrefs();
+
+  /// Reutiliza las mismas claves de [guardarInicio] sin crear almacenamiento nuevo.
+  Future<void> persistirDatosVehiculo({
+    String? placa,
+    String? numeroEconomico,
+    String? modeloNombre,
+    String? marcaNombre,
+    int? anio,
+  }) =>
+      _escribirDatosVehiculoEnPrefs(
+        placa: placa,
+        numeroEconomico: numeroEconomico,
+        modeloNombre: modeloNombre,
+        marcaNombre: marcaNombre,
+        anio: anio,
+      );
+
+  Future<void> guardarInicio({
+    required int idTurno,
+    required int idBitacoraApertura,
+    String? placa,
+    String? numeroEconomico,
+    String? modeloNombre,
+    String? marcaNombre,
+    int? anio,
+  }) async {
+    await _prefs.setInt(AppConstants.keyChecklistIdTurno, idTurno);
+    await _prefs.setInt(
+      AppConstants.keyChecklistIdBitacoraApertura,
+      idBitacoraApertura,
+    );
+    await _prefs.setInt(AppConstants.keyChecklistPasoActual, 2);
+    await _prefs.setBool(AppConstants.keyChecklistCompleto, false);
+    await _prefs.setBool(AppConstants.keyChecklistEsCierre, false);
+    await _escribirDatosVehiculoEnPrefs(
+      placa: placa,
+      numeroEconomico: numeroEconomico,
+      modeloNombre: modeloNombre,
+      marcaNombre: marcaNombre,
+      anio: anio,
+    );
+  }
+
   Future<void> actualizarPaso(int paso) async {
     await _prefs.setInt(AppConstants.keyChecklistPasoActual, paso);
   }
@@ -97,6 +156,7 @@ class ChecklistProgressService {
     if (idTurno == null) return null;
 
     final esCierre = _prefs.getBool(AppConstants.keyChecklistEsCierre) ?? false;
+    final datosVehiculo = _leerDatosVehiculoDesdePrefs();
     if (esCierre) {
       final idBitacoraCierre =
           _prefs.getInt(AppConstants.keyChecklistIdBitacoraCierre);
@@ -109,6 +169,11 @@ class ChecklistProgressService {
         esCierre: true,
         idBitacoraCierre: idBitacoraCierre,
         duracion: _prefs.getInt(AppConstants.keyChecklistDuracionCierre),
+        placa: datosVehiculo?.placa,
+        numeroEconomico: datosVehiculo?.numeroEconomico,
+        modeloNombre: datosVehiculo?.modeloNombre,
+        marcaNombre: datosVehiculo?.marcaNombre,
+        anio: datosVehiculo?.anio,
       );
     }
 
@@ -120,11 +185,11 @@ class ChecklistProgressService {
       idBitacoraApertura: idBitacora,
       pasoActual: _prefs.getInt(AppConstants.keyChecklistPasoActual) ?? 1,
       completo: _prefs.getBool(AppConstants.keyChecklistCompleto) ?? false,
-      placa: _prefs.getString(AppConstants.keyChecklistPlaca),
-      numeroEconomico: _prefs.getString(AppConstants.keyChecklistNumeroEconomico),
-      modeloNombre: _prefs.getString(AppConstants.keyChecklistModeloNombre),
-      marcaNombre: _prefs.getString(AppConstants.keyChecklistMarcaNombre),
-      anio: _prefs.getInt(AppConstants.keyChecklistAnio),
+      placa: datosVehiculo?.placa,
+      numeroEconomico: datosVehiculo?.numeroEconomico,
+      modeloNombre: datosVehiculo?.modeloNombre,
+      marcaNombre: datosVehiculo?.marcaNombre,
+      anio: datosVehiculo?.anio,
     );
   }
 
@@ -142,16 +207,18 @@ class ChecklistProgressService {
     await _prefs.setBool(AppConstants.keyChecklistEsCierre, true);
   }
 
-  Future<void> limpiar() async {
+  Future<void> limpiar({bool preservarDatosVehiculo = false}) async {
     await _prefs.remove(AppConstants.keyChecklistIdTurno);
     await _prefs.remove(AppConstants.keyChecklistIdBitacoraApertura);
     await _prefs.remove(AppConstants.keyChecklistPasoActual);
     await _prefs.remove(AppConstants.keyChecklistCompleto);
-    await _prefs.remove(AppConstants.keyChecklistPlaca);
-    await _prefs.remove(AppConstants.keyChecklistNumeroEconomico);
-    await _prefs.remove(AppConstants.keyChecklistModeloNombre);
-    await _prefs.remove(AppConstants.keyChecklistMarcaNombre);
-    await _prefs.remove(AppConstants.keyChecklistAnio);
+    if (!preservarDatosVehiculo) {
+      await _prefs.remove(AppConstants.keyChecklistPlaca);
+      await _prefs.remove(AppConstants.keyChecklistNumeroEconomico);
+      await _prefs.remove(AppConstants.keyChecklistModeloNombre);
+      await _prefs.remove(AppConstants.keyChecklistMarcaNombre);
+      await _prefs.remove(AppConstants.keyChecklistAnio);
+    }
     await _prefs.remove(AppConstants.keyChecklistIdBitacoraCierre);
     await _prefs.remove(AppConstants.keyChecklistDuracionCierre);
     await _prefs.remove(AppConstants.keyChecklistEsCierre);

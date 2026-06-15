@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../widgets/app_alert_banner.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/errors/app_exception.dart';
@@ -58,12 +59,7 @@ class _NivelesFluidoPageState extends ConsumerState<NivelesFluidoPage> {
     final idBitacora =
         idBitacoraVehiculoParaChecklist(ref, widget.checklistType);
     if (idBitacora == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(mensajeBitacoraFaltante(widget.checklistType)),
-          backgroundColor: Colors.red,
-        ),
-      );
+      showAppAlertError(context, message: mensajeBitacoraFaltante(widget.checklistType));
       return;
     }
 
@@ -83,24 +79,15 @@ class _NivelesFluidoPageState extends ConsumerState<NivelesFluidoPage> {
     } on AuthException catch (e) {
       if (!mounted) return;
       setState(() => _guardandoNiveles = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message), backgroundColor: Colors.red),
-      );
+      showAppAlertError(context, message: e.message);
     } on NetworkException catch (e) {
       if (!mounted) return;
       setState(() => _guardandoNiveles = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message), backgroundColor: Colors.red),
-      );
+      showAppAlertError(context, message: e.message);
     } catch (e) {
       if (!mounted) return;
       setState(() => _guardandoNiveles = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error al registrar niveles de fluidos: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      showAppAlertError(context, message: 'Error al registrar niveles de fluidos: $e');
     }
   }
 

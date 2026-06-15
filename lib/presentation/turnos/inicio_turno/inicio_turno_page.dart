@@ -152,26 +152,14 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Se necesita permiso de ubicación para abrir turno.'),
-                backgroundColor: Colors.red,
-              ),
-            );
+            showAppAlertError(context, message: 'Se necesita permiso de ubicación para abrir turno.');
           }
           return null;
         }
       }
       if (permission == LocationPermission.deniedForever) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Permisos de ubicación denegados permanentemente. Actívalos en Configuración.',
-              ),
-              backgroundColor: Colors.red,
-            ),
-          );
+          showAppAlertError(context, message: 'Permisos de ubicación denegados permanentemente. Actívalos en Configuración.');
         }
         return null;
       }
@@ -181,9 +169,7 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
     } catch (e) {
       debugPrint('Error obteniendo ubicación: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('No se pudo obtener la ubicación: $e'), backgroundColor: Colors.red),
-        );
+        showAppAlertError(context, message: 'No se pudo obtener la ubicación: $e');
       }
       return null;
     }
@@ -191,23 +177,13 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
 
   Future<void> _crearTurnoYContinuar() async {
     if (_evidenciaBytes == null || _evidenciaBytes!.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No hay foto de evidencia. Identifica la placa primero.'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      showAppAlertError(context, message: 'No hay foto de evidencia. Identifica la placa primero.');
       return;
     }
 
     final placaValidada = _placaValidarResult?.placa;
     if (placaValidada == null || placaValidada.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No hay placa validada. Espera a que termine la validación.'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      showAppAlertError(context, message: 'No hay placa validada. Espera a que termine la validación.');
       return;
     }
 
@@ -271,21 +247,15 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
     } on AuthException catch (e) {
       if (!mounted) return;
       setState(() => _creandoTurno = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message), backgroundColor: Colors.red),
-      );
+      showAppAlertError(context, message: e.message);
     } on NetworkException catch (e) {
       if (!mounted) return;
       setState(() => _creandoTurno = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message), backgroundColor: Colors.red),
-      );
+      showAppAlertError(context, message: e.message);
     } catch (e) {
       if (!mounted) return;
       setState(() => _creandoTurno = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al crear turno: $e'), backgroundColor: Colors.red),
-      );
+      showAppAlertError(context, message: 'Error al crear turno: $e');
     }
   }
 
@@ -297,23 +267,13 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
 
   Future<void> _cerrarTurnoYContinuar() async {
     if (_fotoResguardo == null || _fotoResguardo!.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Toma la fotografía de resguardo antes de continuar.'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      showAppAlertError(context, message: 'Toma la fotografía de resguardo antes de continuar.');
       return;
     }
 
     final idTurno = _obtenerIdTurnoParaCierre();
     if (idTurno == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No hay turno activo. Verifica tu sesión.'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      showAppAlertError(context, message: 'No hay turno activo. Verifica tu sesión.');
       return;
     }
 
@@ -358,6 +318,17 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
             duracion: duracion,
           );
 
+      final apertura = ref.read(turnoAperturaProvider);
+      if (apertura.placa != null && apertura.placa!.isNotEmpty) {
+        await ref.read(checklistProgressServiceProvider).persistirDatosVehiculo(
+              placa: apertura.placa,
+              numeroEconomico: apertura.numeroEconomico,
+              modeloNombre: apertura.modeloNombre,
+              marcaNombre: apertura.marcaNombre,
+              anio: apertura.anio,
+            );
+      }
+
       debugPrint(
         'Turno cerrado geográficamente: idTurno=$idTurno, '
         'idBitacoraCierre=$idBitacoraCierre, duracion=$duracion',
@@ -382,9 +353,7 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
         '403' => 'Acceso denegado',
         _ => e.message,
       };
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(mensaje), backgroundColor: Colors.red),
-      );
+      showAppAlertError(context, message: mensaje);
     } on NetworkException catch (e) {
       if (!mounted) return;
       setState(() => _creandoTurno = false);
@@ -392,18 +361,11 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
         '404' => 'Turno no encontrado',
         _ => e.message.isNotEmpty ? e.message : 'No fue posible cerrar el turno',
       };
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(mensaje), backgroundColor: Colors.red),
-      );
+      showAppAlertError(context, message: mensaje);
     } catch (e) {
       if (!mounted) return;
       setState(() => _creandoTurno = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No fue posible cerrar el turno'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      showAppAlertError(context, message: 'No fue posible cerrar el turno');
     }
   }
 
@@ -412,9 +374,7 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
     final token = await ref.read(authLocalDatasourceProvider).getStoredToken();
     if (token == null || token.isEmpty) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Sesión expirada. Inicie sesión de nuevo.'), backgroundColor: Colors.red),
-        );
+        showAppAlertError(context, message: 'Sesión expirada. Inicie sesión de nuevo.');
       }
       return;
     }
@@ -445,23 +405,17 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
     } on AuthException catch (e) {
       if (mounted) {
         setState(() => _validandoPlaca = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message), backgroundColor: Colors.red),
-        );
+        showAppAlertError(context, message: e.message);
       }
     } on NetworkException catch (e) {
       if (mounted) {
         setState(() => _validandoPlaca = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message), backgroundColor: Colors.red),
-        );
+        showAppAlertError(context, message: e.message);
       }
     } catch (e) {
       if (mounted) {
         setState(() => _validandoPlaca = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al validar la placa.'), backgroundColor: Colors.red),
-        );
+        showAppAlertError(context, message: 'Error al validar la placa.');
       }
     }
   }
@@ -634,7 +588,6 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
           ),
           const SizedBox(height: 12),
           DashedBorderBox(
-            height: 220,
             child: Material(
               color: InicioTurnoColors.progressUnfilled(context),
               child: InkWell(

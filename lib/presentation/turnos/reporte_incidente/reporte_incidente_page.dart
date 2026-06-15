@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import '../../widgets/app_alert_banner.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
@@ -10,6 +11,7 @@ import '../checklist_progress_provider.dart';
 import '../mi_turno_provider.dart';
 import '../turno_apertura_provider.dart';
 import '../captura_odometro/dashed_border_box.dart';
+import '../../widgets/captured_evidence_image.dart';
 import 'models/tipo_incidencia.dart';
 import 'reporte_incidente_colors.dart';
 import 'reporte_incidente_provider.dart';
@@ -30,20 +32,85 @@ class _ReporteIncidentePageState extends ConsumerState<ReporteIncidentePage> {
   String? _tipoIncidenciaSeleccionada = tipoIncidenciaAccidente.nombre;
   final List<Uint8List> _fotos = [];
   bool _enviando = false;
+  Position? _cachedPosition;
+  String? _ubicacionDisplayName;
+  bool _cargandoUbicacion = false;
+  late final String _horaDispositivo;
 
   bool get _puedeEnviar =>
       !_enviando &&
+      _obtenerIdTurno() != null &&
       _idTipoIncidenciaSeleccionado != null &&
       _descripcionController.text.trim().isNotEmpty &&
+      _cachedPosition != null &&
       _fotos.isNotEmpty;
 
   @override
   void initState() {
     super.initState();
+    _horaDispositivo = _formatearHora(DateTime.now());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _sincronizarSeleccionEnProvider();
       ref.read(miTurnoActivoProvider.notifier).fetch();
+      _cargarLugarDesdeGps();
     });
+  }
+
+  String _formatearHora(DateTime fecha) {
+    final hora = fecha.hour.toString().padLeft(2, '0');
+    final minuto = fecha.minute.toString().padLeft(2, '0');
+    return '$hora:$minuto';
+  }
+
+  Future<void> _cargarLugarDesdeGps() async {
+    if (!mounted) return;
+    setState(() => _cargandoUbicacion = true);
+
+    final position = await _obtenerUbicacion();
+    if (position == null) {
+      if (mounted) {
+        setState(() {
+          _cargandoUbicacion = false;
+          _ubicacionDisplayName = null;
+        });
+      }
+      return;
+    }
+    _cachedPosition = position;
+
+    try {
+      final resultado = await ref.read(turnosServiceProvider).obtenerDireccion(
+            lat: position.latitude,
+            lon: position.longitude,
+          );
+      if (!mounted) return;
+      setState(() {
+        _ubicacionDisplayName = resultado.displayName;
+        _cargandoUbicacion = false;
+      });
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      showAppAlertError(context, message: e.message);
+      setState(() {
+        _ubicacionDisplayName = null;
+        _cargandoUbicacion = false;
+      });
+    } on NetworkException catch (e) {
+      if (!mounted) return;
+      showAppAlertError(context, message: e.message);
+      setState(() {
+        _ubicacionDisplayName = null;
+        _cargandoUbicacion = false;
+      });
+    } catch (e) {
+      debugPrint('Error obteniendo dirección: $e');
+      if (!mounted) return;
+      showAppAlertError(context, message: 'No se pudo obtener la dirección.');
+      setState(() {
+        _ubicacionDisplayName = null;
+        _cargandoUbicacion = false;
+      });
+    }
   }
 
   void _seleccionarTipo(TipoIncidencia tipo) {
@@ -75,12 +142,7 @@ class _ReporteIncidentePageState extends ConsumerState<ReporteIncidentePage> {
       final bytes = await photo.readAsBytes();
       if (bytes.length > _maxFotoBytes) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('La imagen no debe superar 10 MB.'),
-              backgroundColor: Colors.red,
-            ),
-          );
+          showAppAlertError(context, message: 'La imagen no debe superar 10 MB.');
         }
         return;
       }
@@ -105,28 +167,14 @@ class _ReporteIncidentePageState extends ConsumerState<ReporteIncidentePage> {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                  'Se necesita permiso de ubicación para reportar la incidencia.',
-                ),
-                backgroundColor: Colors.red,
-              ),
-            );
+            showAppAlertError(context, message: 'Se necesita permiso de ubicación para reportar la incidencia.');
           }
           return null;
         }
       }
       if (permission == LocationPermission.deniedForever) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Permisos de ubicación denegados permanentemente. Actívalos en Configuración.',
-              ),
-              backgroundColor: Colors.red,
-            ),
-          );
+          showAppAlertError(context, message: 'Permisos de ubicación denegados permanentemente. Actívalos en Configuración.');
         }
         return null;
       }
@@ -136,12 +184,7 @@ class _ReporteIncidentePageState extends ConsumerState<ReporteIncidentePage> {
     } catch (e) {
       debugPrint('Error obteniendo ubicación: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('No se pudo obtener la ubicación: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        showAppAlertError(context, message: 'No se pudo obtener la ubicación: $e');
       }
       return null;
     }
@@ -152,51 +195,35 @@ class _ReporteIncidentePageState extends ConsumerState<ReporteIncidentePage> {
 
     final descripcion = _descripcionController.text.trim();
     if (descripcion.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Ingresa la descripción del incidente.'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      showAppAlertError(context, message: 'Ingresa la descripción del incidente.');
       return;
     }
 
     if (_fotos.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Debe adjuntar la imagen fotoEvidencia1.'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      showAppAlertError(context, message: 'Debe adjuntar la imagen fotoEvidencia1.');
       return;
     }
 
     for (final foto in _fotos) {
       if (foto.length > _maxFotoBytes) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Cada imagen no debe superar 10 MB.'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        showAppAlertError(context, message: 'Cada imagen no debe superar 10 MB.');
         return;
       }
     }
 
     final idTurno = _obtenerIdTurno();
     if (idTurno == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No hay turno activo. Inicia un turno para continuar.'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      showAppAlertError(context, message: 'No hay turno activo. Inicia un turno para continuar.');
       return;
     }
 
     setState(() => _enviando = true);
 
-    final position = await _obtenerUbicacion();
+    var position = _cachedPosition;
+    if (position == null) {
+      position = await _obtenerUbicacion();
+      if (position != null) _cachedPosition = position;
+    }
     if (position == null) {
       if (mounted) setState(() => _enviando = false);
       return;
@@ -223,36 +250,20 @@ class _ReporteIncidentePageState extends ConsumerState<ReporteIncidentePage> {
         ref.read(reporteIncidenteRegistradaProvider.notifier).state = response.id;
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            response.message ?? 'Incidencia registrada correctamente',
-          ),
-          backgroundColor: Colors.green,
-        ),
-      );
+      showAppAlertSuccess(context, message: response.message ?? 'Incidencia registrada correctamente');
       Navigator.of(context).pop();
     } on AuthException catch (e) {
       if (!mounted) return;
       setState(() => _enviando = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message), backgroundColor: Colors.red),
-      );
+      showAppAlertError(context, message: e.message);
     } on NetworkException catch (e) {
       if (!mounted) return;
       setState(() => _enviando = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message), backgroundColor: Colors.red),
-      );
+      showAppAlertError(context, message: e.message);
     } catch (e) {
       if (!mounted) return;
       setState(() => _enviando = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('No fue posible registrar la incidencia: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      showAppAlertError(context, message: 'No fue posible registrar la incidencia: $e');
     }
   }
 
@@ -262,6 +273,8 @@ class _ReporteIncidentePageState extends ConsumerState<ReporteIncidentePage> {
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(miTurnoActivoProvider);
+    ref.watch(turnoAperturaProvider);
     return Scaffold(
       backgroundColor: ReporteIncidenteColors.background(context),
       appBar: AppBar(
@@ -358,7 +371,9 @@ class _ReporteIncidentePageState extends ConsumerState<ReporteIncidentePage> {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'Av. San Cristobal 123, Cuernavaca, Mor.',
+                  _cargandoUbicacion
+                      ? 'Obteniendo ubicación...'
+                      : (_ubicacionDisplayName ?? 'No disponible'),
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
                         color: ReporteIncidenteColors.textPrimary(context),
                         fontWeight: FontWeight.w600,
@@ -385,7 +400,7 @@ class _ReporteIncidentePageState extends ConsumerState<ReporteIncidentePage> {
               ),
               const SizedBox(height: 2),
               Text(
-                '14:32',
+                _horaDispositivo,
                 style: Theme.of(context).textTheme.titleSmall?.copyWith(
                       color: ReporteIncidenteColors.textPrimary(context),
                       fontWeight: FontWeight.w600,
@@ -522,15 +537,7 @@ class _ReporteIncidentePageState extends ConsumerState<ReporteIncidentePage> {
   Widget _buildFotoItem(BuildContext context, int index) {
     return Stack(
       children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: Image.memory(
-            _fotos[index],
-            height: 100,
-            width: double.infinity,
-            fit: BoxFit.cover,
-          ),
-        ),
+        CapturedEvidenceImage(bytes: _fotos[index]),
         Positioned(
           top: 4,
           right: 4,
@@ -554,7 +561,6 @@ class _ReporteIncidentePageState extends ConsumerState<ReporteIncidentePage> {
     return GestureDetector(
       onTap: _agregarFoto,
       child: DashedBorderBox(
-        height: 100,
         child: Container(
           color: ReporteIncidenteColors.cardBackground(context),
           alignment: Alignment.center,
@@ -593,8 +599,7 @@ class _ReporteIncidentePageState extends ConsumerState<ReporteIncidentePage> {
             style: ElevatedButton.styleFrom(
               backgroundColor: ReporteIncidenteColors.buttonPrimary,
               foregroundColor: Colors.white,
-              disabledBackgroundColor:
-                  ReporteIncidenteColors.buttonPrimary.withValues(alpha: 0.5),
+              disabledBackgroundColor: ReporteIncidenteColors.textSecondary(context),
               disabledForegroundColor: Colors.white70,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),

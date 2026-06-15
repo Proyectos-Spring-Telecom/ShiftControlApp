@@ -68,6 +68,28 @@ class _ControlTurnosPageState extends ConsumerState<ControlTurnosPage> {
         progreso.tieneProgresoIncompleto;
   }
 
+  void _restaurarDatosVehiculoEnAperturaProvider(ChecklistProgress progreso) {
+    final datosVehiculo =
+        ref.read(checklistProgressServiceProvider).leerDatosVehiculo();
+    final fuente = datosVehiculo ?? progreso;
+    if (fuente.placa == null &&
+        fuente.numeroEconomico == null &&
+        fuente.marcaNombre == null &&
+        fuente.modeloNombre == null &&
+        fuente.anio == null) {
+      return;
+    }
+
+    ref.read(turnoAperturaProvider.notifier).state = TurnoAperturaState(
+      idTurno: progreso.idTurno,
+      placa: fuente.placa,
+      numeroEconomico: fuente.numeroEconomico,
+      modeloNombre: fuente.modeloNombre,
+      marcaNombre: fuente.marcaNombre,
+      anio: fuente.anio,
+    );
+  }
+
   void _restaurarProgresoEnProvider(ChecklistProgress progreso) {
     if (progreso.esCierre) {
       ref.read(turnoCierreProvider.notifier).state = TurnoCierreState(
@@ -75,6 +97,7 @@ class _ControlTurnosPageState extends ConsumerState<ControlTurnosPage> {
         idBitacoraCierre: progreso.idBitacoraCierre,
         duracion: progreso.duracion,
       );
+      _restaurarDatosVehiculoEnAperturaProvider(progreso);
       return;
     }
 

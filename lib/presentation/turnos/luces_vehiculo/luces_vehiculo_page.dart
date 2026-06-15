@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../widgets/app_alert_banner.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/errors/app_exception.dart';
@@ -62,12 +63,7 @@ class _LucesVehiculoPageState extends ConsumerState<LucesVehiculoPage> {
     final idBitacora =
         idBitacoraVehiculoParaChecklist(ref, widget.checklistType);
     if (idBitacora == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(mensajeBitacoraFaltante(widget.checklistType)),
-          backgroundColor: Colors.red,
-        ),
-      );
+      showAppAlertError(context, message: mensajeBitacoraFaltante(widget.checklistType));
       return;
     }
 
@@ -87,24 +83,15 @@ class _LucesVehiculoPageState extends ConsumerState<LucesVehiculoPage> {
     } on AuthException catch (e) {
       if (!mounted) return;
       setState(() => _guardandoLuces = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message), backgroundColor: Colors.red),
-      );
+      showAppAlertError(context, message: e.message);
     } on NetworkException catch (e) {
       if (!mounted) return;
       setState(() => _guardandoLuces = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message), backgroundColor: Colors.red),
-      );
+      showAppAlertError(context, message: e.message);
     } catch (e) {
       if (!mounted) return;
       setState(() => _guardandoLuces = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error al registrar luces del vehículo: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      showAppAlertError(context, message: 'Error al registrar luces del vehículo: $e');
     }
   }
 

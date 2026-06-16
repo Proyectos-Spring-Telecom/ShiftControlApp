@@ -214,6 +214,8 @@ class _RegistroCombustiblePageState extends ConsumerState<RegistroCombustiblePag
       }
 
       showAppAlertSuccess(context, message: response.message ?? 'Incidencia de gasolina registrada correctamente');
+      await ref.read(miTurnoActivoProvider.notifier).fetch();
+      if (!mounted) return;
       Navigator.of(context).pop();
     } on AuthException catch (e) {
       if (!mounted) return;

@@ -29,3 +29,13 @@ String formatearSoloHora12Actual() {
   final h12 = h == 0 ? 12 : (h > 12 ? h - 12 : h);
   return '$h12:$m ${am ? 'AM' : 'PM'}';
 }
+
+/// Indica si [fecha] corresponde al día calendario actual (hora local del dispositivo).
+bool esRegistroDelDia(DateTime? fecha) {
+  if (fecha == null) return false;
+  final local = fecha.toLocal();
+  final hoy = DateTime.now();
+  return local.year == hoy.year &&
+      local.month == hoy.month &&
+      local.day == hoy.day;
+}

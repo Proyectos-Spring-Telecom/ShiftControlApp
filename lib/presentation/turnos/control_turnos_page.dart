@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/errors/app_exception.dart';
+import '../../core/utils/date_format_utils.dart';
 import '../../data/models/mi_turno_activo_response.dart';
 import '../controllers/auth_controller.dart';
 import '../../features/turnos/services/checklist_progress_service.dart';
@@ -548,64 +549,146 @@ class _ControlTurnosPageState extends ConsumerState<ControlTurnosPage> {
     return '${s}s';
   }
 
+  static const String _sinRegistros = 'Sin registros';
+
+  static const List<String> _mesesCortos = [
+    'Ene',
+    'Feb',
+    'Mar',
+    'Abr',
+    'May',
+    'Jun',
+    'Jul',
+    'Ago',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dic',
+  ];
+
+  static const List<String> _diasCortos = [
+    'Lun',
+    'Mar',
+    'Mié',
+    'Jue',
+    'Vie',
+    'Sáb',
+    'Dom',
+  ];
+
+  static String _formatearFechaCorta(DateTime? fecha) {
+    if (fecha == null) return '—';
+    final local = fecha.toLocal();
+    final mes = _mesesCortos[local.month - 1];
+    final dia = _diasCortos[local.weekday - 1];
+    return '$dia ${local.day} $mes';
+  }
+
+  static String _formatearFechaRelativaConHora(DateTime? fecha) {
+    if (fecha == null) return '—';
+    final local = fecha.toLocal();
+    final now = DateTime.now();
+    final hoy = DateTime(now.year, now.month, now.day);
+    final dia = DateTime(local.year, local.month, local.day);
+    final diff = dia.difference(hoy).inDays;
+    final hora = _formatearHoraInicio(local);
+    if (diff == 0) return 'Hoy, $hora';
+    if (diff == -1) return 'Ayer, $hora';
+    return '${_formatearFechaCorta(local)}, $hora';
+  }
+
+  static String _formatearLitros(double? litros) {
+    if (litros == null) return '—';
+    if (litros == litros.roundToDouble()) {
+      return '${litros.toInt()} LTS';
+    }
+    return '${litros.toStringAsFixed(2)} LTS';
+  }
+
+  static String _truncarTexto(String? texto, {int maxLength = 40}) {
+    if (texto == null || texto.trim().isEmpty) return '—';
+    final limpio = texto.trim();
+    if (limpio.length <= maxLength) return limpio;
+    return '${limpio.substring(0, maxLength).trimRight()}…';
+  }
+
+  String _subtitleCierreTurno(UltimoTurno? ultimoTurno) {
+    if (ultimoTurno == null) return _sinRegistros;
+    final fecha = _formatearFechaRelativaConHora(ultimoTurno.fechaCierre);
+    final vehiculo = ultimoTurno.vehiculoDisplay;
+    if (fecha == '—' && vehiculo == '—') return _sinRegistros;
+    return '$fecha • $vehiculo';
+  }
+
+  String _subtitleTurnoCompletado(UltimoTurno? ultimoTurno) {
+    if (ultimoTurno == null) return _sinRegistros;
+    final fecha = _formatearFechaCorta(ultimoTurno.fechaCierre);
+    final duracion = _formatearDuracion(ultimoTurno.duracion);
+    if (fecha == '—' && duracion == '—') return _sinRegistros;
+    return '$fecha • $duracion';
+  }
+
+  String _subtitleRegistroCombustible(UltimaIncidenciaGasolina? incidencia) {
+    if (incidencia == null) return _sinRegistros;
+    final fecha = _formatearFechaCorta(incidencia.fechaRegistro);
+    final litros = _formatearLitros(incidencia.litrosCargados);
+    if (fecha == '—' && litros == '—') return _sinRegistros;
+    return '$fecha • $litros';
+  }
+
+  String _subtitleIncidenteReportado(UltimaIncidenciaAccidente? incidencia) {
+    if (incidencia == null) return _sinRegistros;
+    final fecha = _formatearFechaCorta(incidencia.fechaRegistro);
+    final descripcion = _truncarTexto(incidencia.descripcion);
+    if (fecha == '—' && descripcion == '—') return _sinRegistros;
+    return '$fecha • $descripcion';
+  }
+
   Widget _buildHistorialReciente(BuildContext context) {
+    final miTurno = ref.watch(miTurnoActivoProvider).valueOrNull;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'Historial Reciente',
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: ControlTurnosColors.textPrimary(context),
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.8,
-                  ),
-            ),
-            TextButton(
-              onPressed: () {},
-              style: TextButton.styleFrom(
-                foregroundColor: ControlTurnosColors.accent,
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                minimumSize: Size.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        Text(
+          'Historial Reciente',
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                color: ControlTurnosColors.textPrimary(context),
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.8,
               ),
-              child: const Text('Ver todo'),
-            ),
-          ],
         ),
         const SizedBox(height: 12),
-        const _HistorialItem(
+        _HistorialItem(
           icon: Icons.history_rounded,
           iconBgColor: ControlTurnosColors.iconCyan,
           title: 'Cierre de Turno',
-          subtitle: 'Ayer, 18:45 PM • Nissan Versa',
-          showArrow: true,
+          subtitle: _subtitleCierreTurno(miTurno?.ultimoTurno),
+          active: esRegistroDelDia(miTurno?.ultimoTurno?.fechaCierre),
         ),
         const SizedBox(height: 10),
-        const _HistorialItem(
+        _HistorialItem(
           icon: Icons.warning_amber_rounded,
           iconBgColor: ControlTurnosColors.iconOrange,
           title: 'Incidente Reportado',
-          subtitle: 'Lun 12 Ene • Rayón puerta izq.',
-          showArrow: true,
+          subtitle: _subtitleIncidenteReportado(miTurno?.ultimaIncidenciaAccidente),
+          active: esRegistroDelDia(miTurno?.ultimaIncidenciaAccidente?.fechaRegistro),
         ),
         const SizedBox(height: 10),
-        const _HistorialItem(
+        _HistorialItem(
           icon: Icons.check_circle_outline,
           iconBgColor: ControlTurnosColors.iconGreen,
           title: 'Turno Completado',
-          subtitle: 'Lun 12 Ene • 8hrs 05m',
-          showArrow: false,
+          subtitle: _subtitleTurnoCompletado(miTurno?.ultimoTurno),
+          active: esRegistroDelDia(miTurno?.ultimoTurno?.fechaCierre),
         ),
         const SizedBox(height: 10),
-        const _HistorialItem(
+        _HistorialItem(
           icon: Icons.local_gas_station,
           iconBgColor: ControlTurnosColors.iconGreen,
           title: 'Registro de Combustible',
-          subtitle: 'Lun 12 Ene • 45.50 LTS',
-          showArrow: false,
+          subtitle: _subtitleRegistroCombustible(miTurno?.ultimaIncidenciaGasolina),
+          active: esRegistroDelDia(miTurno?.ultimaIncidenciaGasolina?.fechaRegistro),
         ),
       ],
     );
@@ -780,21 +863,39 @@ class _HistorialItem extends StatelessWidget {
     required this.iconBgColor,
     required this.title,
     required this.subtitle,
-    required this.showArrow,
+    this.active = true,
   });
 
   final IconData icon;
   final Color iconBgColor;
   final String title;
   final String subtitle;
-  final bool showArrow;
+  final bool active;
 
   @override
   Widget build(BuildContext context) {
+    // Mismo fondo que FAB de combustible/incidencia deshabilitado en esta pantalla.
+    final inactiveBackground = ControlTurnosColors.disabled(context);
+    final inactiveForeground = ControlTurnosColors.textSecondary(context);
+
+    final cardBackground = active
+        ? ControlTurnosColors.cardBackground(context)
+        : inactiveBackground;
+    final titleColor = active
+        ? ControlTurnosColors.textPrimary(context)
+        : inactiveForeground;
+    final subtitleColor = active
+        ? ControlTurnosColors.textSecondary(context)
+        : inactiveForeground;
+    final iconColor = active ? iconBgColor : inactiveForeground;
+    final iconContainerColor = active
+        ? iconBgColor.withValues(alpha: 0.25)
+        : inactiveBackground;
+
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: ControlTurnosColors.cardBackground(context),
+        color: cardBackground,
         borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
@@ -802,10 +903,10 @@ class _HistorialItem extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: iconBgColor.withValues(alpha: 0.25),
+              color: iconContainerColor,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(icon, color: iconBgColor, size: 24),
+            child: Icon(icon, color: iconColor, size: 24),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -815,7 +916,7 @@ class _HistorialItem extends StatelessWidget {
                 Text(
                   title,
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        color: ControlTurnosColors.textPrimary(context),
+                        color: titleColor,
                         fontWeight: FontWeight.w600,
                       ),
                 ),
@@ -823,18 +924,12 @@ class _HistorialItem extends StatelessWidget {
                 Text(
                   subtitle,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: ControlTurnosColors.textSecondary(context),
+                        color: subtitleColor,
                       ),
                 ),
               ],
             ),
           ),
-          if (showArrow)
-            Icon(
-              Icons.chevron_right,
-              color: ControlTurnosColors.textSecondary(context),
-              size: 24,
-            ),
         ],
       ),
     );

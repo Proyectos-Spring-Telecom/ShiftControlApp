@@ -1,3 +1,5 @@
+import '../../core/utils/duracion_parser.dart';
+
 /// Respuesta de PATCH /api/turnos (cierre geográfico).
 class CerrarTurnoResponse {
   const CerrarTurnoResponse({
@@ -20,7 +22,7 @@ class CerrarTurnoResponse {
       id: (data['id'] as num?)?.toInt(),
       nombre: data['nombre'] as String?,
       idBitacoraCierre: (data['idBitacoraCierre'] as num?)?.toInt(),
-      duracion: (data['duracion'] as num?)?.toInt(),
+      duracion: parseDuracionSegundos(data['duracion']),
       message: json['message'] as String?,
     );
   }

@@ -231,11 +231,18 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: ProfileColors.accentWine,
                             foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
-                          child: const Text('Cambiar Contraseña'),
+                          child: Text(
+                            'Cambiar Contraseña',
+                            textAlign: TextAlign.center,
+                            maxLines: 2,
+                            softWrap: true,
+                            style: const TextStyle(height: 1.1),
+                          ),
                         ),
                       ),
                     ),

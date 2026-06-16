@@ -874,23 +874,14 @@ class _HistorialItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Mismo fondo que FAB de combustible/incidencia deshabilitado en esta pantalla.
-    final inactiveBackground = ControlTurnosColors.disabled(context);
-    final inactiveForeground = ControlTurnosColors.textSecondary(context);
+    final cardBackground = ControlTurnosColors.cardBackground(context);
 
-    final cardBackground = active
-        ? ControlTurnosColors.cardBackground(context)
-        : inactiveBackground;
-    final titleColor = active
-        ? ControlTurnosColors.textPrimary(context)
-        : inactiveForeground;
-    final subtitleColor = active
-        ? ControlTurnosColors.textSecondary(context)
-        : inactiveForeground;
-    final iconColor = active ? iconBgColor : inactiveForeground;
+    final titleColor = ControlTurnosColors.textPrimary(context);
+    final subtitleColor = ControlTurnosColors.textSecondary(context);
+    final iconColor = active ? iconBgColor : ControlTurnosColors.textSecondary(context);
     final iconContainerColor = active
         ? iconBgColor.withValues(alpha: 0.25)
-        : inactiveBackground;
+        : ControlTurnosColors.background(context);
 
     return Container(
       padding: const EdgeInsets.all(14),

@@ -28,6 +28,7 @@ import '../../../data/models/registrar_niveles_fluidos_request.dart';
 import '../../../data/models/registrar_niveles_fluidos_response.dart';
 import '../../../data/models/registrar_testigos_request.dart';
 import '../../../data/models/registrar_testigos_response.dart';
+import '../../../data/models/turno_detalle_response.dart';
 import '../../../data/models/turno_list_response.dart';
 import '../../../data/models/ubicacion_reverse_result.dart';
 
@@ -762,6 +763,31 @@ class TurnosService {
       rethrow;
     } on NetworkException catch (e) {
       debugPrint('TurnosService: listarTurnos NetworkException ${e.code}: ${e.message}');
+      rethrow;
+    }
+  }
+
+  /// GET /api/turnos/{id}
+  Future<TurnoDetalleResponse> obtenerTurnoDetalle({required int id}) async {
+    final path = '/api/turnos/$id';
+    debugPrint('TurnosService: GET $path');
+    try {
+      final data = await _client.get(path);
+      final response = TurnoDetalleResponse.fromJson(data);
+      debugPrint('TurnosService: obtenerTurnoDetalle id=$id');
+      return response;
+    } on AuthException catch (e) {
+      debugPrint(
+        'TurnosService: obtenerTurnoDetalle AuthException ${e.code}: ${e.message}',
+      );
+      rethrow;
+    } on NetworkException catch (e) {
+      debugPrint(
+        'TurnosService: obtenerTurnoDetalle NetworkException ${e.code}: ${e.message}',
+      );
+      rethrow;
+    } catch (e, st) {
+      debugPrint('TurnosService: obtenerTurnoDetalle parse error: $e\n$st');
       rethrow;
     }
   }

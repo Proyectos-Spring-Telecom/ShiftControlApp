@@ -655,21 +655,9 @@ class _HistorialTurnosPageState extends ConsumerState<HistorialTurnosPage> {
   }
 
   void _openDetalle(BuildContext context, String fechaStr, _HistorialItem item) {
-    final data = TurnoDetalleData(
-      operador: item.operador,
-      idEmpleado: item.idEmpleado,
-      vehiculo: item.vehiculo,
-      noEconomico: item.noEconomico,
-      placas: item.placas,
-      grupo: item.grupo,
-      fechaStr: fechaStr,
-      horaInicio: item.horaInicio,
-      horaFin: item.horaFin,
-      distanciaKm: item.distancia,
-    );
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => DetalleTurnoPage(data: data),
+        builder: (_) => DetalleTurnoPage(idTurno: item.turno.id),
       ),
     );
   }
@@ -862,27 +850,22 @@ class _HistorialCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    RichText(
-                      text: TextSpan(
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              color: HistorialTurnosColors.textPrimary(context),
-                              fontWeight: FontWeight.w600,
-                            ),
-                        children: [
-                          TextSpan(text: '${item.vehiculo} • '),
-                          TextSpan(
-                            text: item.id,
-                            style: const TextStyle(color: HistorialTurnosColors.accentWine),
+                    Text(
+                      item.vehiculo,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            color: HistorialTurnosColors.textPrimary(context),
+                            fontWeight: FontWeight.w600,
                           ),
-                        ],
-                      ),
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      'Operador: ${item.operador}',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: HistorialTurnosColors.textPrimary(context),
-                          ),
+                    _CardMetaRow(
+                      icon: Icons.directions_car_outlined,
+                      text: item.placas,
+                    ),
+                    const SizedBox(height: 4),
+                    _CardMetaRow(
+                      icon: Icons.flag_outlined,
+                      text: item.grupo,
                     ),
                     const SizedBox(height: 6),
                     Row(
@@ -896,7 +879,7 @@ class _HistorialCard extends StatelessWidget {
                               ),
                         ),
                         const SizedBox(width: 16),
-                        Icon(Icons.location_on_outlined, size: 14, color: HistorialTurnosColors.textSecondary(context)),
+                        Icon(Icons.schedule_outlined, size: 14, color: HistorialTurnosColors.textSecondary(context)),
                         const SizedBox(width: 4),
                         Text(
                           item.distancia,
@@ -918,6 +901,38 @@ class _HistorialCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _CardMetaRow extends StatelessWidget {
+  const _CardMetaRow({
+    required this.icon,
+    required this.text,
+  });
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(
+          icon,
+          size: 14,
+          color: HistorialTurnosColors.textSecondary(context),
+        ),
+        const SizedBox(width: 4),
+        Expanded(
+          child: Text(
+            text,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: HistorialTurnosColors.textPrimary(context),
+                ),
+          ),
+        ),
+      ],
     );
   }
 }

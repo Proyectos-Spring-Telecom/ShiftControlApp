@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/errors/app_exception.dart';
+import '../../../data/models/informacion_general_response.dart';
+import '../../../data/models/turno_detalle_response.dart';
 import '../control_turnos_colors.dart';
 import '../historial_turnos/historial_turnos_colors.dart';
+import '../mi_turno_provider.dart';
 import '../resumen_turno/resumen_turno_colors.dart';
 
 /// Datos necesarios para mostrar el detalle de un turno.
@@ -13,12 +18,20 @@ class TurnoDetalleData {
     required this.noEconomico,
     required this.placas,
     required this.grupo,
+    required this.estatusNombre,
     required this.fechaStr,
+    required this.fechaFinStr,
     required this.horaInicio,
-    required this.horaFin,
+    this.horaFin,
+    this.duracion,
     required this.distanciaKm,
     this.lecturaInicial,
     this.lecturaFinal,
+    this.fotoLecturaInicial,
+    this.fotoLecturaFinal,
+    this.estadoVehiculo = const [],
+    this.estadoVehiculoCierre = const [],
+    this.mostrarEstadoVehiculoCierre = false,
   });
 
   final String operador;
@@ -27,18 +40,63 @@ class TurnoDetalleData {
   final String noEconomico;
   final String placas;
   final String grupo;
+  final String estatusNombre;
   final String fechaStr;
+  final String fechaFinStr;
   final String horaInicio;
-  final String horaFin;
+  final String? horaFin;
+  final String? duracion;
   final String distanciaKm;
   final String? lecturaInicial;
   final String? lecturaFinal;
+  final String? fotoLecturaInicial;
+  final String? fotoLecturaFinal;
+  final List<EstadoVehiculoItem> estadoVehiculo;
+  final List<EstadoVehiculoItem> estadoVehiculoCierre;
+  final bool mostrarEstadoVehiculoCierre;
 
-  /// Duración aproximada en formato "9h 30m".
+  factory TurnoDetalleData.fromTurnoDetalle(TurnoDetalle turno) {
+    final inicio = turno.bitacoraResumen?.inicio;
+    final fin = turno.bitacoraResumen?.fin;
+    final kmInicial = inicio?.tablero?.kmActual;
+    final kmFinal = fin?.tablero?.kmActual;
+
+    return TurnoDetalleData(
+      operador: _nombreOperador(turno.usuarioDetalle),
+      idEmpleado: _idOperador(turno.usuarioDetalle),
+      vehiculo: _tituloVehiculo(turno),
+      noEconomico: turno.vehiculoPlaca?.numeroEconomico ?? '—',
+      placas: _placas(turno),
+      grupo: turno.id.toString(),
+      estatusNombre: turno.estatusTurno?.nombre ?? '—',
+      fechaStr: _formatearFecha(turno.fechaApertura),
+      fechaFinStr: turno.fechaCierre != null
+          ? _formatearFecha(turno.fechaCierre)
+          : _formatearFecha(turno.fechaApertura),
+      horaInicio: _formatearHora(turno.fechaApertura),
+      horaFin:
+          turno.fechaCierre != null ? _formatearHora(turno.fechaCierre) : null,
+      duracion: turno.duracion,
+      distanciaKm: _distanciaRecorrida(kmInicial, kmFinal),
+      lecturaInicial: _formatearKm(kmInicial),
+      lecturaFinal: _formatearKm(kmFinal),
+      fotoLecturaInicial: _fotoInicio(turno),
+      fotoLecturaFinal: _fotoFin(turno),
+      estadoVehiculo: inicio?.informacionGeneral?.estadoVehiculo ?? const [],
+      estadoVehiculoCierre: fin?.informacionGeneral?.estadoVehiculo ?? const [],
+      mostrarEstadoVehiculoCierre:
+          fin != null && fin.informacionGeneral != null,
+    );
+  }
+
+  /// Duración del API (ej. 09:30:00) o cálculo aproximado como fallback.
   String get duracionStr {
+    if (duracion != null && duracion!.trim().isNotEmpty) {
+      return duracion!.trim();
+    }
     final a = _parseTime(horaInicio);
-    final b = _parseTime(horaFin);
-    if (a == null || b == null) return '-';
+    final b = horaFin != null ? _parseTime(horaFin!) : null;
+    if (a == null || b == null) return '—';
     int m = (b.hour * 60 + b.minute) - (a.hour * 60 + a.minute);
     if (m < 0) m += 24 * 60;
     final h = m ~/ 60;
@@ -56,7 +114,6 @@ class TurnoDetalleData {
     return TimeOfDay(hour: h, minute: m);
   }
 
-  /// Formato 12h con AM/PM, ej: "08:00" -> "8:00 AM", "17:30" -> "5:30 PM".
   String _formatHora12(String s) {
     final t = _parseTime(s);
     if (t == null) return s;
@@ -68,20 +125,141 @@ class TurnoDetalleData {
   }
 
   String get horaInicio12 => _formatHora12(horaInicio);
-  String get horaFin12 => _formatHora12(horaFin);
+
+  String get horaFin12 =>
+      horaFin == null ? 'Turno en curso' : _formatHora12(horaFin!);
+
+  static String _nombreOperador(UsuarioDetalle? usuario) {
+    if (usuario == null) return '—';
+    final partes = [
+      usuario.nombre,
+      usuario.apellidoPaterno,
+      usuario.apellidoMaterno,
+    ].whereType<String>().where((s) => s.trim().isNotEmpty).toList();
+    if (partes.isNotEmpty) return partes.join(' ');
+    return '—';
+  }
+
+  static String _idOperador(UsuarioDetalle? usuario) {
+    final id = usuario?.id;
+    if (id == null) return '—';
+    return id.toString();
+  }
+
+  static String _tituloVehiculo(TurnoDetalle turno) {
+    final placa = turno.vehiculoPlaca;
+    if (placa != null) {
+      final marcaModelo = [placa.marcaNombre, placa.modeloNombre]
+          .whereType<String>()
+          .where((s) => s.trim().isNotEmpty)
+          .join(' ');
+      if (marcaModelo.isNotEmpty) {
+        if (placa.anio != null) return '$marcaModelo - ${placa.anio}';
+        return marcaModelo;
+      }
+    }
+    if (turno.vehiculo?.trim().isNotEmpty == true) return turno.vehiculo!.trim();
+    if (placa?.placa?.trim().isNotEmpty == true) return placa!.placa!.trim();
+    return '—';
+  }
+
+  static String _placas(TurnoDetalle turno) {
+    final placa = turno.vehiculoPlaca?.placa?.trim();
+    if (placa != null && placa.isNotEmpty) return placa;
+    return '—';
+  }
+
+  static String? _fotoInicio(TurnoDetalle turno) {
+    final tablero = turno.bitacoraResumen?.inicio?.tablero?.fotoTablero;
+    if (tablero != null && tablero.trim().isNotEmpty) return tablero;
+    final evidencia = turno.evidenciaApertura;
+    if (evidencia != null && evidencia.trim().isNotEmpty) return evidencia;
+    return null;
+  }
+
+  static String? _fotoFin(TurnoDetalle turno) {
+    final tablero = turno.bitacoraResumen?.fin?.tablero?.fotoTablero;
+    if (tablero != null && tablero.trim().isNotEmpty) return tablero;
+    final evidencia = turno.evidenciaCierre;
+    if (evidencia != null && evidencia.trim().isNotEmpty) return evidencia;
+    return null;
+  }
+
+  static String _distanciaRecorrida(num? inicial, num? finalKm) {
+    if (inicial == null || finalKm == null) return '—';
+    final diff = finalKm - inicial;
+    if (diff < 0) return '—';
+    return _formatearKm(diff) ?? '—';
+  }
+
+  static String? _formatearKm(num? km) {
+    if (km == null) return null;
+    if (km == km.roundToDouble()) {
+      return km.round().toString().replaceAllMapped(
+            RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+            (m) => '${m[1]},',
+          );
+    }
+    return km.toString();
+  }
+
+  static const List<String> _mesesCortos = [
+    'Ene',
+    'Feb',
+    'Mar',
+    'Abr',
+    'May',
+    'Jun',
+    'Jul',
+    'Ago',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dic',
+  ];
+
+  static String _formatearFecha(DateTime? fecha) {
+    if (fecha == null) return '—';
+    final local = DateTime(fecha.year, fecha.month, fecha.day);
+    final mes = _mesesCortos[local.month - 1];
+    return '${local.day} $mes, ${local.year}';
+  }
+
+  static String _formatearHora(DateTime? fecha) {
+    if (fecha == null) return '—';
+    final local = fecha.toLocal();
+    final h = local.hour.toString().padLeft(2, '0');
+    final m = local.minute.toString().padLeft(2, '0');
+    return '$h:$m';
+  }
 }
 
 /// Pantalla de detalle de un turno (empleado, vehículo, horario, odómetro).
-class DetalleTurnoPage extends StatelessWidget {
+class DetalleTurnoPage extends ConsumerStatefulWidget {
   const DetalleTurnoPage({
     super.key,
-    required this.data,
+    required this.idTurno,
   });
 
-  final TurnoDetalleData data;
+  final int idTurno;
+
+  @override
+  ConsumerState<DetalleTurnoPage> createState() => _DetalleTurnoPageState();
+}
+
+class _DetalleTurnoPageState extends ConsumerState<DetalleTurnoPage> {
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(
+      () => ref.read(turnoDetalleProvider.notifier).fetch(widget.idTurno),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    final detalleAsync = ref.watch(turnoDetalleProvider);
+
     return Scaffold(
       backgroundColor: HistorialTurnosColors.background(context),
       appBar: AppBar(
@@ -107,29 +285,67 @@ class DetalleTurnoPage extends StatelessWidget {
           ),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
-        children: [
-          _buildStatusPill(context),
-          const SizedBox(height: 20),
-          _buildCardEmpleadoVehiculo(context),
-          const SizedBox(height: 16),
-          _buildCardEstadoVehiculo(context),
-          const SizedBox(height: 16),
-          _buildCardHorario(context),
-          const SizedBox(height: 16),
-          _buildCardOdometro(context),
-          const SizedBox(height: 16),
-          _buildCardKilometrajeActual(context),
-          const SizedBox(height: 16),
-          _buildCardDistanciaRecorrida(context),
-        ],
+      body: detalleAsync.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (error, _) => Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(
+              _mensajeError(error),
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: HistorialTurnosColors.accentWine,
+                  ),
+            ),
+          ),
+        ),
+        data: (data) => ListView(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
+          children: [
+            _buildStatusPill(context, data),
+            const SizedBox(height: 20),
+            _buildCardEmpleadoVehiculo(context, data),
+            const SizedBox(height: 16),
+            _buildCardEstadoVehiculo(
+              context,
+              titulo: 'Estado del Vehículo — Apertura',
+              items: data.estadoVehiculo,
+            ),
+            if (data.mostrarEstadoVehiculoCierre) ...[
+              const SizedBox(height: 16),
+              _buildCardEstadoVehiculo(
+                context,
+                titulo: 'Estado del Vehículo — Cierre',
+                items: data.estadoVehiculoCierre,
+              ),
+            ],
+            const SizedBox(height: 16),
+            _buildCardHorario(context, data),
+            const SizedBox(height: 16),
+            _buildCardOdometro(context, data),
+            const SizedBox(height: 16),
+            _buildCardKilometrajeActual(context, data),
+            // TODO: Se oculta temporalmente hasta contar con
+            // información oficial de distancia recorrida.
+            // const SizedBox(height: 16),
+            // _buildCardDistanciaRecorrida(context, data),
+          ],
+        ),
       ),
     );
   }
 
-  /// Card "Distancia Recorrida" como en Cierre de Turno, con icono en el título.
-  Widget _buildCardDistanciaRecorrida(BuildContext context) {
+  String _mensajeError(Object error) {
+    if (error is AuthException) return error.message;
+    if (error is NetworkException) {
+      if (error.code == '404') return 'Turno no encontrado.';
+      return error.message;
+    }
+    return 'No se pudo cargar el detalle del turno.';
+  }
+
+  // ignore: unused_element — se reactivará cuando exista distancia oficial del API.
+  Widget _buildCardDistanciaRecorrida(BuildContext context, TurnoDetalleData data) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
@@ -178,9 +394,8 @@ class DetalleTurnoPage extends StatelessWidget {
     );
   }
 
-  /// Card "Kilometraje actual" como en Apertura de Turno (Captura Odómetro), sin icono de editar.
-  Widget _buildCardKilometrajeActual(BuildContext context) {
-    final value = data.lecturaFinal ?? '142.593';
+  Widget _buildCardKilometrajeActual(BuildContext context, TurnoDetalleData data) {
+    final value = data.lecturaFinal ?? '—';
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
@@ -249,8 +464,7 @@ class DetalleTurnoPage extends StatelessWidget {
     );
   }
 
-  /// Mismo diseño que la etiqueta de Estado en Resumen de Turno (texto e icono centrados).
-  Widget _buildStatusPill(BuildContext context) {
+  Widget _buildStatusPill(BuildContext context, TurnoDetalleData data) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(13),
@@ -262,7 +476,7 @@ class DetalleTurnoPage extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text(
-            'Turno Completado',
+            data.estatusNombre,
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
                   color: ResumenTurnoColors.statusTextGreen,
                   fontWeight: FontWeight.bold,
@@ -273,7 +487,7 @@ class DetalleTurnoPage extends StatelessWidget {
     );
   }
 
-  Widget _buildCardEmpleadoVehiculo(BuildContext context) {
+  Widget _buildCardEmpleadoVehiculo(BuildContext context, TurnoDetalleData data) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -289,7 +503,9 @@ class DetalleTurnoPage extends StatelessWidget {
                 radius: 28,
                 backgroundColor: HistorialTurnosColors.iconCircleBg(context),
                 child: Text(
-                  data.operador.isNotEmpty ? data.operador[0].toUpperCase() : '?',
+                  data.operador.isNotEmpty && data.operador != '—'
+                      ? data.operador[0].toUpperCase()
+                      : '?',
                   style: TextStyle(
                     color: HistorialTurnosColors.textPrimary(context),
                     fontSize: 22,
@@ -401,16 +617,11 @@ class DetalleTurnoPage extends StatelessWidget {
     );
   }
 
-  Widget _buildCardEstadoVehiculo(BuildContext context) {
-    const items = [
-      ('Estado de la carrocería', 'Bueno'),
-      ('Estado de indicadores', 'Bueno'),
-      ('Nivel de Gasolina', '95 %'),
-      ('Estado de las Luces', 'Bueno'),
-      ('Estado de accesorios', 'Bueno'),
-      ('Documentación', 'En regla'),
-    ];
-
+  Widget _buildCardEstadoVehiculo(
+    BuildContext context, {
+    required String titulo,
+    required List<EstadoVehiculoItem> items,
+  }) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -424,54 +635,64 @@ class DetalleTurnoPage extends StatelessWidget {
             children: [
               Icon(Icons.checklist_rtl, color: HistorialTurnosColors.accentWine, size: 22),
               const SizedBox(width: 8),
-              Text(
-                'Estado del Vehículo',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: HistorialTurnosColors.textPrimary(context),
-                      fontWeight: FontWeight.bold,
-                    ),
+              Expanded(
+                child: Text(
+                  titulo,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: HistorialTurnosColors.textPrimary(context),
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
               ),
             ],
           ),
           const SizedBox(height: 16),
-          for (int i = 0; i < items.length; i++) ...[
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Expanded(
-                  child: Text(
-                    '${items[i].$1}:',
+          if (items.isEmpty)
+            Text(
+              'No disponible',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: HistorialTurnosColors.textSecondary(context),
+                  ),
+            )
+          else
+            for (int i = 0; i < items.length; i++) ...[
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: Text(
+                      '${items[i].etiqueta ?? '—'}:',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: HistorialTurnosColors.textSecondary(context),
+                            fontWeight: FontWeight.w500,
+                          ),
+                    ),
+                  ),
+                  Text(
+                    items[i].valor ?? '—',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: HistorialTurnosColors.textSecondary(context),
-                          fontWeight: FontWeight.w500,
+                          color: HistorialTurnosColors.textPrimary(context),
+                          fontWeight: FontWeight.w600,
                         ),
                   ),
-                ),
-                Text(
-                  items[i].$2,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: HistorialTurnosColors.textPrimary(context),
-                        fontWeight: FontWeight.w600,
-                      ),
-                ),
-              ],
-            ),
-            if (i < items.length - 1)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                child: Divider(
-                  color: HistorialTurnosColors.textSecondary(context).withValues(alpha: 0.35),
-                  height: 1,
-                  thickness: 1,
-                ),
+                ],
               ),
-          ],
+              if (i < items.length - 1)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: Divider(
+                    color: HistorialTurnosColors.textSecondary(context).withValues(alpha: 0.35),
+                    height: 1,
+                    thickness: 1,
+                  ),
+                ),
+            ],
         ],
       ),
     );
   }
 
-  Widget _buildCardHorario(BuildContext context) {
+  Widget _buildCardHorario(BuildContext context, TurnoDetalleData data) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -545,7 +766,7 @@ class DetalleTurnoPage extends StatelessWidget {
                           ),
                     ),
                     Text(
-                      data.fechaStr,
+                      data.fechaFinStr,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: HistorialTurnosColors.textSecondary(context),
                           ),
@@ -592,7 +813,7 @@ class DetalleTurnoPage extends StatelessWidget {
     );
   }
 
-  Widget _buildCardOdometro(BuildContext context) {
+  Widget _buildCardOdometro(BuildContext context, TurnoDetalleData data) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -659,19 +880,7 @@ class DetalleTurnoPage extends StatelessWidget {
                           ),
                     ),
                     const SizedBox(height: 8),
-                    Container(
-                      height: 56,
-                      decoration: BoxDecoration(
-                        color: HistorialTurnosColors.background(context),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      alignment: Alignment.center,
-                      child: Icon(
-                        Icons.speed_outlined,
-                        color: HistorialTurnosColors.textSecondary(context),
-                        size: 32,
-                      ),
-                    ),
+                    _buildFotoOdometro(context, data.fotoLecturaInicial),
                     if (data.lecturaInicial != null) ...[
                       const SizedBox(height: 4),
                       Text(
@@ -696,19 +905,7 @@ class DetalleTurnoPage extends StatelessWidget {
                           ),
                     ),
                     const SizedBox(height: 8),
-                    Container(
-                      height: 56,
-                      decoration: BoxDecoration(
-                        color: HistorialTurnosColors.background(context),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      alignment: Alignment.center,
-                      child: Icon(
-                        Icons.speed_outlined,
-                        color: HistorialTurnosColors.textSecondary(context),
-                        size: 32,
-                      ),
-                    ),
+                    _buildFotoOdometro(context, data.fotoLecturaFinal),
                     if (data.lecturaFinal != null) ...[
                       const SizedBox(height: 4),
                       Text(
@@ -724,6 +921,37 @@ class DetalleTurnoPage extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildFotoOdometro(BuildContext context, String? url) {
+    return Container(
+      height: 56,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: HistorialTurnosColors.background(context),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: url != null && url.isNotEmpty
+          ? Image.network(
+              url,
+              fit: BoxFit.cover,
+              width: double.infinity,
+              errorBuilder: (context, error, stackTrace) =>
+                  _placeholderOdometro(context),
+            )
+          : _placeholderOdometro(context),
+    );
+  }
+
+  Widget _placeholderOdometro(BuildContext context) {
+    return Center(
+      child: Icon(
+        Icons.speed_outlined,
+        color: HistorialTurnosColors.textSecondary(context),
+        size: 32,
       ),
     );
   }

@@ -22,7 +22,7 @@ class HistorialTurnosPage extends ConsumerStatefulWidget {
 }
 
 class _HistorialTurnosPageState extends ConsumerState<HistorialTurnosPage> {
-  static const int _maxDiasRetroceso = 365;
+  static const int _maxDiasRetroceso = 30;
 
   static const List<String> _mesesCortos = [
     'Ene',
@@ -56,25 +56,63 @@ class _HistorialTurnosPageState extends ConsumerState<HistorialTurnosPage> {
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(_onScroll);
     _searchController.addListener(() => setState(() {}));
     WidgetsBinding.instance.addPostFrameCallback((_) => _cargarInicial());
   }
 
   @override
   void dispose() {
-    _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     _searchController.dispose();
     super.dispose();
   }
 
-  void _onScroll() {
-    if (!_scrollController.hasClients) return;
-    final position = _scrollController.position;
-    if (position.pixels >= position.maxScrollExtent - 200) {
-      _cargarMasSiCorresponde();
+  static const double _scrollPrefetchThreshold = 200;
+
+  bool _onScrollNotification(ScrollNotification notification) {
+    if (_modoRango || _isLoadingInitial || _isLoadingMore || !_hasMoreData) {
+      return false;
     }
+
+    debugPrint('[Historial] scroll: ${notification.runtimeType}');
+
+    if (notification is OverscrollNotification) {
+      final metrics = notification.metrics;
+      final enElFinal = metrics.pixels >= metrics.maxScrollExtent;
+      debugPrint(
+        '[Historial] overscroll=${notification.overscroll} '
+        'pixels=${metrics.pixels} max=${metrics.maxScrollExtent}',
+      );
+      if (enElFinal && notification.overscroll < 0) {
+        debugPrint('[Historial] overscroll al final → cargar más');
+        _cargarMasSiCorresponde();
+      }
+      return false;
+    }
+
+    if (notification is ScrollUpdateNotification ||
+        notification is ScrollEndNotification) {
+      if (!_scrollController.hasClients) return false;
+
+      final position = _scrollController.position;
+      final cercaDelFinal = position.pixels >=
+          position.maxScrollExtent - _scrollPrefetchThreshold;
+      final contenidoCorto =
+          position.maxScrollExtent <= _scrollPrefetchThreshold;
+
+      debugPrint(
+        '[Historial] pixels=${position.pixels} '
+        'max=${position.maxScrollExtent} '
+        'cercaDelFinal=$cercaDelFinal contenidoCorto=$contenidoCorto',
+      );
+
+      if (cercaDelFinal || contenidoCorto) {
+        debugPrint('[Historial] cerca del final → cargar más');
+        _cargarMasSiCorresponde();
+      }
+    }
+
+    return false;
   }
 
   String _formatoApi(DateTime fecha) {
@@ -178,7 +216,13 @@ class _HistorialTurnosPageState extends ConsumerState<HistorialTurnosPage> {
     });
 
     try {
-      await _cargarHastaPrimerDiaConDatos();
+      final items = await _consultarDia(_fechaActualConsulta);
+      if (!mounted) return;
+      if (items.isNotEmpty) {
+        _agregarTurnosDelDia(_fechaActualConsulta, items);
+      }
+      _fechaActualConsulta =
+          _fechaActualConsulta.subtract(const Duration(days: 1));
     } on AppException catch (e) {
       if (!mounted) return;
       setState(() => _errorMessage = e.message);
@@ -230,8 +274,15 @@ class _HistorialTurnosPageState extends ConsumerState<HistorialTurnosPage> {
 
   Future<void> _cargarMasSiCorresponde() async {
     if (_modoRango || _isLoadingInitial || _isLoadingMore || !_hasMoreData) {
+      debugPrint(
+        '[Historial] _cargarMasSiCorresponde omitido: '
+        'modoRango=$_modoRango loading=$_isLoadingInitial '
+        'loadingMore=$_isLoadingMore hasMore=$_hasMoreData',
+      );
       return;
     }
+
+    debugPrint('[Historial] _cargarMasSiCorresponde iniciado');
 
     setState(() {
       _isLoadingMore = true;
@@ -239,15 +290,44 @@ class _HistorialTurnosPageState extends ConsumerState<HistorialTurnosPage> {
     });
 
     try {
-      final items = await _consultarDia(_fechaActualConsulta);
+      var diasBuscados = 0;
+      var encontroDatos = false;
+
+      while (diasBuscados < _maxDiasRetroceso && !encontroDatos) {
+        final clave = _claveFecha(_fechaActualConsulta);
+
+        if (_fechasConsultadas.contains(clave)) {
+          _fechaActualConsulta =
+              _fechaActualConsulta.subtract(const Duration(days: 1));
+          diasBuscados++;
+          continue;
+        }
+
+        final items = await _consultarDia(_fechaActualConsulta);
+
+        if (!mounted) return;
+
+        if (items.isNotEmpty) {
+          debugPrint(
+            '[Historial] datos encontrados: ${_claveFecha(_fechaActualConsulta)} '
+            '(${items.length} turnos)',
+          );
+          _agregarTurnosDelDia(_fechaActualConsulta, items);
+          _fechaActualConsulta =
+              _fechaActualConsulta.subtract(const Duration(days: 1));
+          encontroDatos = true;
+        } else {
+          _fechaActualConsulta =
+              _fechaActualConsulta.subtract(const Duration(days: 1));
+          diasBuscados++;
+        }
+      }
+
       if (!mounted) return;
 
-      if (items.isEmpty) {
-        setState(() => _hasMoreData = false);
-      } else {
-        _agregarTurnosDelDia(_fechaActualConsulta, items);
-        _fechaActualConsulta =
-            _fechaActualConsulta.subtract(const Duration(days: 1));
+      if (!encontroDatos) {
+        debugPrint('[Historial] sin más datos en $_maxDiasRetroceso días');
+        _hasMoreData = false;
       }
     } on AppException catch (e) {
       if (mounted) setState(() => _errorMessage = e.message);
@@ -274,15 +354,12 @@ class _HistorialTurnosPageState extends ConsumerState<HistorialTurnosPage> {
 
     try {
       final items = await _consultarDia(_fechaActualConsulta);
+      if (!mounted) return;
       if (items.isNotEmpty) {
         _agregarTurnosDelDia(_fechaActualConsulta, items);
-        _fechaActualConsulta =
-            _fechaActualConsulta.subtract(const Duration(days: 1));
-      } else {
-        _fechaActualConsulta =
-            _fechaActualConsulta.subtract(const Duration(days: 1));
-        await _cargarHastaPrimerDiaConDatos();
       }
+      _fechaActualConsulta =
+          _fechaActualConsulta.subtract(const Duration(days: 1));
     } on AppException catch (e) {
       if (mounted) setState(() => _errorMessage = e.message);
     } catch (e) {
@@ -399,12 +476,12 @@ class _HistorialTurnosPageState extends ConsumerState<HistorialTurnosPage> {
       final inicio = fechas[0].isBefore(fechas[1]) ? fechas[0] : fechas[1];
       final fin = fechas[0].isBefore(fechas[1]) ? fechas[1] : fechas[0];
       if (esMismoDia(inicio, fin)) {
-        return 'Mostrando turnos del: ${_formatoApi(inicio)}';
+        return 'Turnos del ${_formatoApi(inicio)}';
       }
-      return 'Mostrando turnos del: ${_formatoApi(inicio)} al ${_formatoApi(fin)}';
+      return 'Turnos del ${_formatoApi(inicio)} al ${_formatoApi(fin)}';
     }
 
-    return 'Mostrando turnos del: ${_formatoApi(_soloDia(fechas.first))}';
+    return 'Turnos del ${_formatoApi(_soloDia(fechas.first))}';
   }
 
   Future<void> _limpiarFiltro() async {
@@ -465,21 +542,69 @@ class _HistorialTurnosPageState extends ConsumerState<HistorialTurnosPage> {
           Expanded(
             child: _isLoadingInitial
                 ? const Center(child: CircularProgressIndicator())
-                : grupos.isEmpty
-                    ? Center(
-                        child: Text(
-                          'Sin turnos para mostrar',
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: HistorialTurnosColors.textSecondary(context),
+                : NotificationListener<ScrollNotification>(
+                    onNotification: _onScrollNotification,
+                    child: ListView.builder(
+                      controller: _scrollController,
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
+                      itemCount: grupos.isEmpty
+                          ? 1
+                          : grupos.length + (_isLoadingMore ? 1 : 0),
+                      itemBuilder: (context, groupIndex) {
+                        if (grupos.isEmpty) {
+                          return Center(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 48),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    'Sin turnos para hoy',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodyMedium
+                                        ?.copyWith(
+                                          color: HistorialTurnosColors
+                                              .textSecondary(context),
+                                        ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Desliza hacia abajo para buscar días anteriores',
+                                    textAlign: TextAlign.center,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.copyWith(
+                                          color: HistorialTurnosColors
+                                              .textSecondary(context),
+                                        ),
+                                  ),
+                                  if (_hasMoreData && !_modoRango)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 16),
+                                      child: TextButton.icon(
+                                        onPressed: _isLoadingMore
+                                            ? null
+                                            : _cargarMasSiCorresponde,
+                                        icon: const Icon(
+                                          Icons.keyboard_arrow_down,
+                                        ),
+                                        label: Text(
+                                          _isLoadingMore
+                                              ? 'Buscando...'
+                                              : 'Buscar días anteriores',
+                                        ),
+                                      ),
+                                    ),
+                                ],
                               ),
-                        ),
-                      )
-                    : ListView.builder(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
-                        itemCount: grupos.length + (_isLoadingMore ? 1 : 0),
-                        itemBuilder: (context, groupIndex) {
-                          if (groupIndex >= grupos.length) {
+                            ),
+                          );
+                        }
+
+                        if (groupIndex >= grupos.length) {
                             return const Padding(
                               padding: EdgeInsets.symmetric(vertical: 16),
                               child: Center(
@@ -522,6 +647,7 @@ class _HistorialTurnosPageState extends ConsumerState<HistorialTurnosPage> {
                           );
                         },
                       ),
+                    ),
           ),
         ],
       ),
@@ -611,7 +737,7 @@ class _HistorialTurnosPageState extends ConsumerState<HistorialTurnosPage> {
     final baseSmall = Theme.of(context).textTheme.bodySmall;
     final indicadorFontSize = (baseSmall?.fontSize ?? 12) * 1.2;
     final indicadorStyle = baseSmall?.copyWith(
-      color: HistorialTurnosColors.accentWine,
+      color: HistorialTurnosColors.textPrimary(context),
       fontSize: indicadorFontSize,
     );
 

@@ -8,6 +8,7 @@ import '../control_turnos_colors.dart';
 import '../historial_turnos/historial_turnos_colors.dart';
 import '../mi_turno_provider.dart';
 import '../resumen_turno/resumen_turno_colors.dart';
+import '../../widgets/network_image_preview.dart';
 
 /// Datos necesarios para mostrar el detalle de un turno.
 class TurnoDetalleData {
@@ -855,7 +856,9 @@ class _DetalleTurnoPageState extends ConsumerState<DetalleTurnoPage> {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      '${data.distanciaKm} total',
+                      data.distanciaKm == '—'
+                          ? '${data.distanciaKm} total'
+                          : '${data.distanciaKm} km total',
                       style: Theme.of(context).textTheme.titleSmall?.copyWith(
                             color: ControlTurnosColors.statusPillForeground(context),
                             fontWeight: FontWeight.w600,
@@ -880,11 +883,15 @@ class _DetalleTurnoPageState extends ConsumerState<DetalleTurnoPage> {
                           ),
                     ),
                     const SizedBox(height: 8),
-                    _buildFotoOdometro(context, data.fotoLecturaInicial),
+                    _buildFotoOdometro(
+                      context,
+                      data.fotoLecturaInicial,
+                      heroTag: 'odometro-apertura-${widget.idTurno}',
+                    ),
                     if (data.lecturaInicial != null) ...[
                       const SizedBox(height: 4),
                       Text(
-                        data.lecturaInicial!,
+                        '${data.lecturaInicial!} km',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                               color: HistorialTurnosColors.textPrimary(context),
                             ),
@@ -905,11 +912,15 @@ class _DetalleTurnoPageState extends ConsumerState<DetalleTurnoPage> {
                           ),
                     ),
                     const SizedBox(height: 8),
-                    _buildFotoOdometro(context, data.fotoLecturaFinal),
+                    _buildFotoOdometro(
+                      context,
+                      data.fotoLecturaFinal,
+                      heroTag: 'odometro-cierre-${widget.idTurno}',
+                    ),
                     if (data.lecturaFinal != null) ...[
                       const SizedBox(height: 4),
                       Text(
-                        data.lecturaFinal!,
+                        '${data.lecturaFinal!} km',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                               color: HistorialTurnosColors.textPrimary(context),
                             ),
@@ -925,9 +936,14 @@ class _DetalleTurnoPageState extends ConsumerState<DetalleTurnoPage> {
     );
   }
 
-  Widget _buildFotoOdometro(BuildContext context, String? url) {
+  Widget _buildFotoOdometro(
+    BuildContext context,
+    String? url, {
+    required String heroTag,
+  }) {
+    const alturaFoto = 56.0 * 1.3;
     return Container(
-      height: 56,
+      height: alturaFoto,
       width: double.infinity,
       decoration: BoxDecoration(
         color: HistorialTurnosColors.background(context),
@@ -935,12 +951,23 @@ class _DetalleTurnoPageState extends ConsumerState<DetalleTurnoPage> {
       ),
       clipBehavior: Clip.antiAlias,
       child: url != null && url.isNotEmpty
-          ? Image.network(
-              url,
-              fit: BoxFit.cover,
-              width: double.infinity,
-              errorBuilder: (context, error, stackTrace) =>
-                  _placeholderOdometro(context),
+          ? GestureDetector(
+              onTap: () => showNetworkImagePreview(
+                context,
+                imageUrl: url,
+                heroTag: heroTag,
+              ),
+              child: Hero(
+                tag: heroTag,
+                child: Image.network(
+                  url,
+                  fit: BoxFit.cover,
+                  width: double.infinity,
+                  height: alturaFoto,
+                  errorBuilder: (context, error, stackTrace) =>
+                      _placeholderOdometro(context),
+                ),
+              ),
             )
           : _placeholderOdometro(context),
     );

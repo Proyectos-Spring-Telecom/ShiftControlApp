@@ -1,9 +1,15 @@
+import 'package:calendar_date_picker2/calendar_date_picker2.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/errors/app_exception.dart';
+import '../../../core/utils/date_format_utils.dart';
+import '../../../data/models/turno_list_response.dart';
 import '../detalle_turno/detalle_turno_page.dart';
+import '../mi_turno_provider.dart';
 import 'historial_turnos_colors.dart';
 
-class HistorialTurnosPage extends StatefulWidget {
+class HistorialTurnosPage extends ConsumerStatefulWidget {
   const HistorialTurnosPage({
     super.key,
     this.onOpenDrawer,
@@ -12,87 +18,405 @@ class HistorialTurnosPage extends StatefulWidget {
   final VoidCallback? onOpenDrawer;
 
   @override
-  State<HistorialTurnosPage> createState() => _HistorialTurnosPageState();
+  ConsumerState<HistorialTurnosPage> createState() => _HistorialTurnosPageState();
 }
 
-class _HistorialTurnosPageState extends State<HistorialTurnosPage> {
+class _HistorialTurnosPageState extends ConsumerState<HistorialTurnosPage> {
+  static const int _maxDiasRetroceso = 365;
+
+  static const List<String> _mesesCortos = [
+    'Ene',
+    'Feb',
+    'Mar',
+    'Abr',
+    'May',
+    'Jun',
+    'Jul',
+    'Ago',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dic',
+  ];
+
   final TextEditingController _searchController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+
+  List<DateTime?> _selectedDates = [];
+  final List<_HistorialGroup> _grupos = [];
+  final Set<String> _fechasConsultadas = {};
+
+  DateTime _fechaActualConsulta = DateTime.now();
+  bool _isLoadingInitial = true;
+  bool _isLoadingMore = false;
+  bool _hasMoreData = true;
+  bool _modoRango = false;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+    _searchController.addListener(() => setState(() {}));
+    WidgetsBinding.instance.addPostFrameCallback((_) => _cargarInicial());
+  }
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
     _searchController.dispose();
     super.dispose();
   }
 
-  static const List<_HistorialGroup> _grupos = [
-    _HistorialGroup(
-      titulo: 'Hoy',
-      fechaStr: '12 Oct, 2023',
-      items: [
-        _HistorialItem(
-          vehiculo: 'Ford Transit',
-          id: 'XP-902',
-          operador: 'Carlos Mendez',
-          idEmpleado: 'OP-8821',
-          noEconomico: 'ECO-204',
-          placas: 'XP-902-A',
-          grupo: 'Norte - Ruta 5',
-          horaInicio: '08:00',
-          horaFin: '17:30',
-          distancia: '145 km',
-          iconData: Icons.local_shipping_outlined,
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    if (position.pixels >= position.maxScrollExtent - 200) {
+      _cargarMasSiCorresponde();
+    }
+  }
+
+  String _formatoApi(DateTime fecha) {
+    final local = DateTime(fecha.year, fecha.month, fecha.day);
+    final m = local.month.toString().padLeft(2, '0');
+    final d = local.day.toString().padLeft(2, '0');
+    return '${local.year}-$m-$d';
+  }
+
+  String _claveFecha(DateTime fecha) => _formatoApi(fecha);
+
+  String _fechaStrGrupo(DateTime fecha) {
+    final mes = _mesesCortos[fecha.month - 1];
+    return '${fecha.day} $mes, ${fecha.year}';
+  }
+
+  String _tituloGrupo(DateTime fecha) {
+    final hoy = DateTime.now();
+    final ayer = hoy.subtract(const Duration(days: 1));
+    if (esMismoDia(fecha, hoy)) return 'Hoy';
+    if (esMismoDia(fecha, ayer)) return 'Ayer';
+    return _fechaStrGrupo(fecha);
+  }
+
+  String _formatearHora(DateTime? fecha) {
+    if (fecha == null) return '—';
+    final local = fecha.toLocal();
+    final h = local.hour.toString().padLeft(2, '0');
+    final m = local.minute.toString().padLeft(2, '0');
+    return '$h:$m';
+  }
+
+  String _formatearDuracion(int? segundos) {
+    if (segundos == null || segundos <= 0) return '—';
+    final d = Duration(seconds: segundos);
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60);
+    if (h > 0) return '${h}h ${m.toString().padLeft(2, '0')}m';
+    if (m > 0) return '${m}m';
+    return '${d.inSeconds}s';
+  }
+
+  DateTime _soloDia(DateTime fecha) =>
+      DateTime(fecha.year, fecha.month, fecha.day);
+
+  Future<List<TurnoListItem>> _fetchTurnos({
+    required String fechaDesde,
+    required String fechaHasta,
+  }) async {
+    return ref.read(turnosServiceProvider).listarTurnos(
+          fechaDesde: fechaDesde,
+          fechaHasta: fechaHasta,
+        );
+  }
+
+  void _agregarTurnosDelDia(DateTime fecha, List<TurnoListItem> turnos) {
+    if (turnos.isEmpty) return;
+    final dia = _soloDia(fecha);
+    final items = turnos.map(_toHistorialItem).toList();
+    final indice = _grupos.indexWhere((g) => esMismoDia(g.fecha, dia));
+    if (indice >= 0) {
+      _grupos[indice].items.addAll(items);
+    } else {
+      _grupos.add(
+        _HistorialGroup(
+          titulo: _tituloGrupo(dia),
+          fechaStr: _fechaStrGrupo(dia),
+          fecha: dia,
+          items: items,
         ),
-        _HistorialItem(
-          vehiculo: 'Mercedes Sprinter',
-          id: 'BZ-114',
-          operador: 'Carlos Mendez',
-          idEmpleado: 'OP-8821',
-          noEconomico: 'ECO-114',
-          placas: 'BZ-114-A',
-          grupo: 'Norte - Ruta 5',
-          horaInicio: '06:00',
-          horaFin: '14:00',
-          distancia: '89 km',
-          iconData: Icons.directions_bus_outlined,
-        ),
-      ],
-    ),
-    _HistorialGroup(
-      titulo: 'Ayer',
-      fechaStr: '11 Oct, 2023',
-      items: [
-        _HistorialItem(
-          vehiculo: 'Ford Transit',
-          id: 'XP-902',
-          operador: 'Carlos Mendez',
-          idEmpleado: 'OP-8821',
-          noEconomico: 'ECO-204',
-          placas: 'XP-902-A',
-          grupo: 'Norte - Ruta 5',
-          horaInicio: '10:30',
-          horaFin: '19:45',
-          distancia: '210 km',
-          iconData: Icons.local_shipping_outlined,
-        ),
-        _HistorialItem(
-          vehiculo: 'Tractor Unit',
-          id: 'TR-44',
-          operador: 'Carlos Mendez',
-          idEmpleado: 'OP-8821',
-          noEconomico: 'ECO-44',
-          placas: 'TR-44-A',
-          grupo: 'Norte - Ruta 5',
-          horaInicio: '07:00',
-          horaFin: '15:00',
-          distancia: '42 km',
-          iconData: Icons.agriculture_outlined,
-        ),
-      ],
-    ),
-  ];
+      );
+    }
+  }
+
+  _HistorialItem _toHistorialItem(TurnoListItem turno) {
+    return _HistorialItem(
+      turno: turno,
+      vehiculo: turno.vehiculoDisplay,
+      id: turno.placas,
+      operador: '—',
+      idEmpleado: '—',
+      noEconomico: turno.id.toString(),
+      placas: turno.placas,
+      grupo: turno.estatusTurnoNombre ?? '—',
+      horaInicio: _formatearHora(turno.fechaApertura),
+      horaFin: _formatearHora(turno.fechaCierre),
+      distancia: _formatearDuracion(turno.duracionSegundos),
+      iconData: Icons.local_shipping_outlined,
+    );
+  }
+
+  Future<void> _cargarInicial() async {
+    setState(() {
+      _isLoadingInitial = true;
+      _errorMessage = null;
+      _grupos.clear();
+      _fechasConsultadas.clear();
+      _hasMoreData = true;
+      _modoRango = false;
+      _fechaActualConsulta = _soloDia(DateTime.now());
+    });
+
+    try {
+      await _cargarHastaPrimerDiaConDatos();
+    } on AppException catch (e) {
+      if (!mounted) return;
+      setState(() => _errorMessage = e.message);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _errorMessage = 'No se pudo cargar el historial: $e');
+    } finally {
+      if (mounted) setState(() => _isLoadingInitial = false);
+    }
+  }
+
+  Future<void> _cargarHastaPrimerDiaConDatos() async {
+    var diasRetrocedidos = 0;
+    while (diasRetrocedidos < _maxDiasRetroceso && _hasMoreData) {
+      final clave = _claveFecha(_fechaActualConsulta);
+      if (_fechasConsultadas.contains(clave)) {
+        _fechaActualConsulta =
+            _fechaActualConsulta.subtract(const Duration(days: 1));
+        diasRetrocedidos++;
+        continue;
+      }
+
+      final items = await _consultarDia(_fechaActualConsulta);
+      if (items.isNotEmpty) {
+        _agregarTurnosDelDia(_fechaActualConsulta, items);
+        _fechaActualConsulta =
+            _fechaActualConsulta.subtract(const Duration(days: 1));
+        return;
+      }
+
+      _fechaActualConsulta =
+          _fechaActualConsulta.subtract(const Duration(days: 1));
+      diasRetrocedidos++;
+    }
+
+    if (_grupos.isEmpty) {
+      _hasMoreData = false;
+    }
+  }
+
+  Future<List<TurnoListItem>> _consultarDia(DateTime fecha) async {
+    final clave = _claveFecha(fecha);
+    if (_fechasConsultadas.contains(clave)) return const [];
+    _fechasConsultadas.add(clave);
+
+    final api = _formatoApi(fecha);
+    return _fetchTurnos(fechaDesde: api, fechaHasta: api);
+  }
+
+  Future<void> _cargarMasSiCorresponde() async {
+    if (_modoRango || _isLoadingInitial || _isLoadingMore || !_hasMoreData) {
+      return;
+    }
+
+    setState(() {
+      _isLoadingMore = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final items = await _consultarDia(_fechaActualConsulta);
+      if (!mounted) return;
+
+      if (items.isEmpty) {
+        setState(() => _hasMoreData = false);
+      } else {
+        _agregarTurnosDelDia(_fechaActualConsulta, items);
+        _fechaActualConsulta =
+            _fechaActualConsulta.subtract(const Duration(days: 1));
+      }
+    } on AppException catch (e) {
+      if (mounted) setState(() => _errorMessage = e.message);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _errorMessage = 'No se pudo cargar más turnos: $e');
+      }
+    } finally {
+      if (mounted) setState(() => _isLoadingMore = false);
+    }
+  }
+
+  Future<void> _aplicarFiltroFechaUnica(DateTime fecha) async {
+    setState(() {
+      _isLoadingInitial = true;
+      _errorMessage = null;
+      _grupos.clear();
+      _fechasConsultadas.clear();
+      _hasMoreData = true;
+      _modoRango = false;
+      _fechaActualConsulta = _soloDia(fecha);
+      _selectedDates = [fecha];
+    });
+
+    try {
+      final items = await _consultarDia(_fechaActualConsulta);
+      if (items.isNotEmpty) {
+        _agregarTurnosDelDia(_fechaActualConsulta, items);
+        _fechaActualConsulta =
+            _fechaActualConsulta.subtract(const Duration(days: 1));
+      } else {
+        _fechaActualConsulta =
+            _fechaActualConsulta.subtract(const Duration(days: 1));
+        await _cargarHastaPrimerDiaConDatos();
+      }
+    } on AppException catch (e) {
+      if (mounted) setState(() => _errorMessage = e.message);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _errorMessage = 'No se pudo filtrar por fecha: $e');
+      }
+    } finally {
+      if (mounted) setState(() => _isLoadingInitial = false);
+    }
+  }
+
+  Future<void> _aplicarFiltroRango(DateTime inicio, DateTime fin) async {
+    final desde = inicio.isBefore(fin) ? inicio : fin;
+    final hasta = inicio.isBefore(fin) ? fin : inicio;
+
+    setState(() {
+      _isLoadingInitial = true;
+      _errorMessage = null;
+      _grupos.clear();
+      _fechasConsultadas.clear();
+      _hasMoreData = false;
+      _modoRango = true;
+      _selectedDates = [desde, hasta];
+    });
+
+    try {
+      final items = await _fetchTurnos(
+        fechaDesde: _formatoApi(desde),
+        fechaHasta: _formatoApi(hasta),
+      );
+      final porDia = <DateTime, List<TurnoListItem>>{};
+      for (final turno in items) {
+        final fecha = _soloDia(turno.fechaCierre ?? turno.fechaApertura ?? desde);
+        porDia.putIfAbsent(fecha, () => []).add(turno);
+      }
+      final diasOrdenados = porDia.keys.toList()..sort((a, b) => b.compareTo(a));
+      for (final dia in diasOrdenados) {
+        _agregarTurnosDelDia(dia, porDia[dia]!);
+      }
+    } on AppException catch (e) {
+      if (mounted) setState(() => _errorMessage = e.message);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _errorMessage = 'No se pudo filtrar por rango: $e');
+      }
+    } finally {
+      if (mounted) setState(() => _isLoadingInitial = false);
+    }
+  }
+
+  Future<void> _abrirCalendario() async {
+    final values = await showCalendarDatePicker2Dialog(
+      context: context,
+      config: CalendarDatePicker2WithActionButtonsConfig(
+        calendarType: CalendarDatePicker2Type.range,
+      ),
+      dialogSize: const Size(325, 400),
+      value: _selectedDates,
+      dialogBackgroundColor: HistorialTurnosColors.cardBackground(context),
+      borderRadius: BorderRadius.circular(12),
+    );
+    if (!mounted || values == null) return;
+
+    final fechas = values.whereType<DateTime>().toList();
+    if (fechas.isEmpty) {
+      _selectedDates = [];
+      await _cargarInicial();
+      return;
+    }
+
+    if (fechas.length == 1) {
+      await _aplicarFiltroFechaUnica(_soloDia(fechas.first));
+      return;
+    }
+
+    await _aplicarFiltroRango(
+      _soloDia(fechas[0]),
+      _soloDia(fechas[1]),
+    );
+  }
+
+  List<_HistorialGroup> get _gruposVisibles {
+    final query = _searchController.text.trim().toLowerCase();
+    if (query.isEmpty) return _grupos;
+
+    return _grupos
+        .map((group) {
+          final items = group.items.where((item) {
+            return item.vehiculo.toLowerCase().contains(query) ||
+                item.operador.toLowerCase().contains(query) ||
+                item.placas.toLowerCase().contains(query) ||
+                item.id.toLowerCase().contains(query);
+          }).toList();
+          if (items.isEmpty) return null;
+          return _HistorialGroup(
+            titulo: group.titulo,
+            fechaStr: group.fechaStr,
+            fecha: group.fecha,
+            items: items,
+          );
+        })
+        .whereType<_HistorialGroup>()
+        .toList();
+  }
+
+  bool get _tieneFiltroFecha =>
+      _selectedDates.whereType<DateTime>().isNotEmpty;
+
+  String? get _textoFiltroActivo {
+    final fechas = _selectedDates.whereType<DateTime>().toList();
+    if (fechas.isEmpty) return null;
+
+    if (_modoRango && fechas.length >= 2) {
+      final inicio = fechas[0].isBefore(fechas[1]) ? fechas[0] : fechas[1];
+      final fin = fechas[0].isBefore(fechas[1]) ? fechas[1] : fechas[0];
+      if (esMismoDia(inicio, fin)) {
+        return 'Mostrando turnos del: ${_formatoApi(inicio)}';
+      }
+      return 'Mostrando turnos del: ${_formatoApi(inicio)} al ${_formatoApi(fin)}';
+    }
+
+    return 'Mostrando turnos del: ${_formatoApi(_soloDia(fechas.first))}';
+  }
+
+  Future<void> _limpiarFiltro() async {
+    if (_isLoadingInitial) return;
+    setState(() => _selectedDates = []);
+    await _cargarInicial();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final grupos = _gruposVisibles;
+
     return Scaffold(
       backgroundColor: HistorialTurnosColors.background(context),
       appBar: AppBar(
@@ -127,40 +451,77 @@ class _HistorialTurnosPageState extends State<HistorialTurnosPage> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _buildSearchBar(context),
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
-              itemCount: _grupos.length,
-              itemBuilder: (context, groupIndex) {
-                final group = _grupos[groupIndex];
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      group.titulo,
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            color: HistorialTurnosColors.textPrimary(context),
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.8,
-                          ),
+          _buildFiltroActivoIndicator(context),
+          if (_errorMessage != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Text(
+                _errorMessage!,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: HistorialTurnosColors.accentWine,
                     ),
-                    const SizedBox(height: 12),
-                    ...group.items.map((item) => Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: _HistorialCard(
-                            item: item,
-                            fechaStr: group.fechaStr,
-                            borderColor: group.titulo == 'Ayer'
-                                ? HistorialTurnosColors.cardBorderAyer
-                                : HistorialTurnosColors.accentWine,
-                            onTap: () => _openDetalle(context, group.fechaStr, item),
-                          ),
-                        )),
-                    if (groupIndex < _grupos.length - 1) const SizedBox(height: 20),
-                  ],
-                );
-              },
+              ),
             ),
+          Expanded(
+            child: _isLoadingInitial
+                ? const Center(child: CircularProgressIndicator())
+                : grupos.isEmpty
+                    ? Center(
+                        child: Text(
+                          'Sin turnos para mostrar',
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                color: HistorialTurnosColors.textSecondary(context),
+                              ),
+                        ),
+                      )
+                    : ListView.builder(
+                        controller: _scrollController,
+                        padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
+                        itemCount: grupos.length + (_isLoadingMore ? 1 : 0),
+                        itemBuilder: (context, groupIndex) {
+                          if (groupIndex >= grupos.length) {
+                            return const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 16),
+                              child: Center(
+                                child: SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                ),
+                              ),
+                            );
+                          }
+
+                          final group = grupos[groupIndex];
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                group.titulo,
+                                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                      color: HistorialTurnosColors.textPrimary(context),
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: 0.8,
+                                    ),
+                              ),
+                              const SizedBox(height: 12),
+                              ...group.items.map((item) => Padding(
+                                    padding: const EdgeInsets.only(bottom: 10),
+                                    child: _HistorialCard(
+                                      item: item,
+                                      fechaStr: group.fechaStr,
+                                      borderColor: group.titulo == 'Hoy'
+                                          ? HistorialTurnosColors.accentWine
+                                          : HistorialTurnosColors.cardBorderAyer,
+                                      onTap: () =>
+                                          _openDetalle(context, group.fechaStr, item),
+                                    ),
+                                  )),
+                              if (groupIndex < grupos.length - 1) const SizedBox(height: 20),
+                            ],
+                          );
+                        },
+                      ),
           ),
         ],
       ),
@@ -222,26 +583,85 @@ class _HistorialTurnosPageState extends State<HistorialTurnosPage> {
                 ),
               ),
             ),
+            IconButton(
+              icon: Icon(
+                Icons.calendar_today_outlined,
+                color: _selectedDates.whereType<DateTime>().isNotEmpty
+                    ? HistorialTurnosColors.accentWine
+                    : HistorialTurnosColors.searchPlaceholder(context),
+                size: 22,
+              ),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+              onPressed: _abrirCalendario,
+              tooltip: 'Filtrar por fecha',
+            ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildFiltroActivoIndicator(BuildContext context) {
+    if (!_tieneFiltroFecha) return const SizedBox.shrink();
+
+    final texto = _textoFiltroActivo;
+    if (texto == null) return const SizedBox.shrink();
+
+    final baseSmall = Theme.of(context).textTheme.bodySmall;
+    final indicadorFontSize = (baseSmall?.fontSize ?? 12) * 1.2;
+    final indicadorStyle = baseSmall?.copyWith(
+      color: HistorialTurnosColors.accentWine,
+      fontSize: indicadorFontSize,
+    );
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 12, 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(
+            child: Text(
+              texto,
+              style: indicadorStyle,
+            ),
+          ),
+          TextButton(
+            onPressed: _isLoadingInitial ? null : _limpiarFiltro,
+            style: TextButton.styleFrom(
+              foregroundColor: HistorialTurnosColors.accentWine,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: Text(
+              'Limpiar',
+              style: indicadorStyle?.copyWith(fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
 class _HistorialGroup {
-  const _HistorialGroup({
+  _HistorialGroup({
     required this.titulo,
     required this.fechaStr,
+    required this.fecha,
     required this.items,
   });
+
   final String titulo;
   final String fechaStr;
+  final DateTime fecha;
   final List<_HistorialItem> items;
 }
 
 class _HistorialItem {
   const _HistorialItem({
+    required this.turno,
     required this.vehiculo,
     required this.id,
     required this.operador,
@@ -254,6 +674,8 @@ class _HistorialItem {
     required this.distancia,
     required this.iconData,
   });
+
+  final TurnoListItem turno;
   final String vehiculo;
   final String id;
   final String operador;

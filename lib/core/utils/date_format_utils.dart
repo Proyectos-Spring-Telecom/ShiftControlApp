@@ -35,7 +35,10 @@ bool esRegistroDelDia(DateTime? fecha) {
   if (fecha == null) return false;
   final local = fecha.toLocal();
   final hoy = DateTime.now();
-  return local.year == hoy.year &&
-      local.month == hoy.month &&
-      local.day == hoy.day;
+  return esMismoDia(local, hoy);
+}
+
+/// Compara dos fechas por año, mes y día (hora local).
+bool esMismoDia(DateTime a, DateTime b) {
+  return a.year == b.year && a.month == b.month && a.day == b.day;
 }

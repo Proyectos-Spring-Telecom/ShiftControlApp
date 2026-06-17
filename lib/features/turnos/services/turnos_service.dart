@@ -28,6 +28,7 @@ import '../../../data/models/registrar_niveles_fluidos_request.dart';
 import '../../../data/models/registrar_niveles_fluidos_response.dart';
 import '../../../data/models/registrar_testigos_request.dart';
 import '../../../data/models/registrar_testigos_response.dart';
+import '../../../data/models/turno_list_response.dart';
 import '../../../data/models/ubicacion_reverse_result.dart';
 
 class TurnosService {
@@ -81,7 +82,7 @@ class TurnosService {
     }
   }
 
-  /// GET /api/ubicacion/reverse — dirección a partir de coordenadas GPS.
+  /// GET /api/ubicacion/reverse ��� direcci?n a partir de coordenadas GPS.
   Future<UbicacionReverseResult> obtenerDireccion({
     required double lat,
     required double lon,
@@ -89,18 +90,18 @@ class TurnosService {
     debugPrint('TurnosService: GET /api/ubicacion/reverse lat=$lat, lon=$lon');
     try {
       final data = await _client.get('/api/ubicacion/reverse?lat=$lat&lon=$lon');
-      debugPrint('TurnosService: ubicación obtenida: ${data['displayName']}');
+      debugPrint('TurnosService: ubicaci?n obtenida: ${data['displayName']}');
       return UbicacionReverseResult.fromJson(data);
     } on AuthException catch (e) {
-      debugPrint('TurnosService: ubicación AuthException ${e.code}: ${e.message}');
+      debugPrint('TurnosService: ubicaci?n AuthException ${e.code}: ${e.message}');
       rethrow;
     } on NetworkException catch (e) {
-      debugPrint('TurnosService: ubicación NetworkException ${e.code}: ${e.message}');
+      debugPrint('TurnosService: ubicaci?n NetworkException ${e.code}: ${e.message}');
       rethrow;
     }
   }
 
-  /// Crea un turno de apertura con foto + ubicación GPS.
+  /// Crea un turno de apertura con foto + ubicaci?n GPS.
   /// POST /api/turnos (multipart/form-data)
   Future<CrearTurnoResponse> crearTurno({
     required String placa,
@@ -111,7 +112,7 @@ class TurnosService {
   }) async {
     final token = await _tokenStorage.getToken();
     if (token == null || token.isEmpty) {
-      throw const AuthException('Sesión expirada. Inicia sesión de nuevo.', '401');
+      throw const AuthException('Sesi?n expirada. Inicia sesi?n de nuevo.', '401');
     }
 
     final base = AppEnvironmentConfig.baseUrl.endsWith('/')
@@ -144,13 +145,13 @@ class TurnosService {
 
     if (response.statusCode == 401) {
       throw AuthException(
-        _parseMessage(response.body) ?? 'Sesión expirada.',
+        _parseMessage(response.body) ?? 'Sesi?n expirada.',
         '401',
       );
     }
     if (response.statusCode == 400) {
       throw AuthException(
-        _parseMessage(response.body) ?? 'Datos inválidos.',
+        _parseMessage(response.body) ?? 'Datos inv?lidos.',
         '400',
       );
     }
@@ -176,7 +177,7 @@ class TurnosService {
   }) async {
     final token = await _tokenStorage.getToken();
     if (token == null || token.isEmpty) {
-      throw const AuthException('Sesión expirada. Inicia sesión de nuevo.', '401');
+      throw const AuthException('Sesi?n expirada. Inicia sesi?n de nuevo.', '401');
     }
 
     final base = AppEnvironmentConfig.baseUrl.endsWith('/')
@@ -208,13 +209,13 @@ class TurnosService {
 
     if (response.statusCode == 401) {
       throw AuthException(
-        _parseMessage(response.body) ?? 'Sesión expirada.',
+        _parseMessage(response.body) ?? 'Sesi?n expirada.',
         '401',
       );
     }
     if (response.statusCode == 400) {
       throw AuthException(
-        _parseMessage(response.body) ?? 'Datos inválidos.',
+        _parseMessage(response.body) ?? 'Datos inv?lidos.',
         '400',
       );
     }
@@ -230,7 +231,7 @@ class TurnosService {
     return RegistrarTableroResponse.fromJson(data);
   }
 
-  /// Registra un daño en inspección exterior del vehículo.
+  /// Registra un da?o en inspecci?n exterior del veh?culo.
   /// POST /api/turnos/inspeccion-vehiculo-ex (multipart/form-data)
   Future<RegistrarInspeccionVehiculoExResponse> registrarInspeccionVehiculoEx({
     required int idBitacoraVehiculo,
@@ -243,7 +244,7 @@ class TurnosService {
   }) async {
     final token = await _tokenStorage.getToken();
     if (token == null || token.isEmpty) {
-      throw const AuthException('Sesión expirada. Inicia sesión de nuevo.', '401');
+      throw const AuthException('Sesi?n expirada. Inicia sesi?n de nuevo.', '401');
     }
 
     final base = AppEnvironmentConfig.baseUrl.endsWith('/')
@@ -285,26 +286,26 @@ class TurnosService {
 
     if (response.statusCode == 401) {
       throw AuthException(
-        _parseMessage(response.body) ?? 'Sesión expirada.',
+        _parseMessage(response.body) ?? 'Sesi?n expirada.',
         '401',
       );
     }
     if (response.statusCode == 400) {
       throw AuthException(
-        _parseMessage(response.body) ?? 'Datos inválidos.',
+        _parseMessage(response.body) ?? 'Datos inv?lidos.',
         '400',
       );
     }
     if (response.statusCode != 200 && response.statusCode != 201) {
       throw NetworkException(
         _parseMessage(response.body) ??
-            'Error al registrar inspección exterior (${response.statusCode})',
+            'Error al registrar inspecci?n exterior (${response.statusCode})',
         '${response.statusCode}',
       );
     }
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
-    debugPrint('TurnosService: inspección exterior registrada exitosamente');
+    debugPrint('TurnosService: inspecci?n exterior registrada exitosamente');
     return RegistrarInspeccionVehiculoExResponse.fromJson(data);
   }
 
@@ -329,7 +330,7 @@ class TurnosService {
     }
   }
 
-  /// Registra niveles de fluidos del vehículo.
+  /// Registra niveles de fluidos del veh?culo.
   /// POST /api/turnos/niveles-fluidos (application/json)
   Future<RegistrarNivelesFluidosResponse> registrarNivelesFluidos(
     RegistrarNivelesFluidosRequest request,
@@ -355,7 +356,7 @@ class TurnosService {
     }
   }
 
-  /// Registra estado de luces del vehículo.
+  /// Registra estado de luces del veh?culo.
   /// POST /api/turnos/luces-vehiculo (application/json)
   Future<RegistrarLucesVehiculoResponse> registrarLucesVehiculo(
     RegistrarLucesVehiculoRequest request,
@@ -366,7 +367,7 @@ class TurnosService {
     );
     try {
       final data = await _client.post('/api/turnos/luces-vehiculo', body: request.toJson());
-      debugPrint('TurnosService: luces del vehículo registradas exitosamente');
+      debugPrint('TurnosService: luces del veh?culo registradas exitosamente');
       return RegistrarLucesVehiculoResponse.fromJson(data);
     } on AuthException catch (e) {
       debugPrint(
@@ -381,7 +382,7 @@ class TurnosService {
     }
   }
 
-  /// Registra accesorios del vehículo.
+  /// Registra accesorios del veh?culo.
   /// POST /api/turnos/accesorios-vehiculo (application/json)
   Future<RegistrarAccesoriosVehiculoResponse> registrarAccesoriosVehiculo(
     RegistrarAccesoriosVehiculoRequest request,
@@ -392,7 +393,7 @@ class TurnosService {
     );
     try {
       final data = await _client.post('/api/turnos/accesorios-vehiculo', body: request.toJson());
-      debugPrint('TurnosService: accesorios del vehículo registrados exitosamente');
+      debugPrint('TurnosService: accesorios del veh?culo registrados exitosamente');
       return RegistrarAccesoriosVehiculoResponse.fromJson(data);
     } on AuthException catch (e) {
       debugPrint(
@@ -407,7 +408,7 @@ class TurnosService {
     }
   }
 
-  /// Registra documentación del vehículo.
+  /// Registra documentaci?n del veh?culo.
   /// POST /api/turnos/documentacion-vehiculo (application/json)
   Future<RegistrarDocumentacionVehiculoResponse> registrarDocumentacionVehiculo(
     RegistrarDocumentacionVehiculoRequest request,
@@ -421,7 +422,7 @@ class TurnosService {
         '/api/turnos/documentacion-vehiculo',
         body: request.toJson(),
       );
-      debugPrint('TurnosService: documentación del vehículo registrada exitosamente');
+      debugPrint('TurnosService: documentaci?n del veh?culo registrada exitosamente');
       return RegistrarDocumentacionVehiculoResponse.fromJson(data);
     } on AuthException catch (e) {
       debugPrint(
@@ -452,7 +453,7 @@ class TurnosService {
   }) async {
     final token = await _tokenStorage.getToken();
     if (token == null || token.isEmpty) {
-      throw const AuthException('Sesión expirada. Inicia sesión de nuevo.', '401');
+      throw const AuthException('Sesi?n expirada. Inicia sesi?n de nuevo.', '401');
     }
 
     final base = AppEnvironmentConfig.baseUrl.endsWith('/')
@@ -497,7 +498,7 @@ class TurnosService {
     );
 
     if (response.statusCode == 401) {
-      throw const AuthException('Sesión expirada. Inicia sesión de nuevo.', '401');
+      throw const AuthException('Sesi?n expirada. Inicia sesi?n de nuevo.', '401');
     }
     if (response.statusCode == 403) {
       throw const AuthException('Acceso denegado.', '403');
@@ -507,7 +508,7 @@ class TurnosService {
     }
     if (response.statusCode == 400) {
       throw AuthException(
-        _parseMessage(response.body) ?? 'Datos inválidos.',
+        _parseMessage(response.body) ?? 'Datos inv?lidos.',
         '400',
       );
     }
@@ -541,7 +542,7 @@ class TurnosService {
   }) async {
     final token = await _tokenStorage.getToken();
     if (token == null || token.isEmpty) {
-      throw const AuthException('Sesión expirada. Inicia sesión de nuevo.', '401');
+      throw const AuthException('Sesi?n expirada. Inicia sesi?n de nuevo.', '401');
     }
 
     final base = AppEnvironmentConfig.baseUrl.endsWith('/')
@@ -599,7 +600,7 @@ class TurnosService {
     );
 
     if (response.statusCode == 401) {
-      throw const AuthException('Sesión expirada. Inicia sesión de nuevo.', '401');
+      throw const AuthException('Sesi?n expirada. Inicia sesi?n de nuevo.', '401');
     }
     if (response.statusCode == 403) {
       throw const AuthException('Acceso denegado.', '403');
@@ -609,7 +610,7 @@ class TurnosService {
     }
     if (response.statusCode == 400) {
       throw AuthException(
-        _parseMessage(response.body) ?? 'Datos inválidos.',
+        _parseMessage(response.body) ?? 'Datos inv?lidos.',
         '400',
       );
     }
@@ -626,7 +627,7 @@ class TurnosService {
     return RegistrarIncidenciaResponse.fromJson(data);
   }
 
-  /// Cierre geográfico del turno.
+  /// Cierre geogr?fico del turno.
   /// PATCH /api/turnos (multipart/form-data)
   Future<CerrarTurnoResponse> cerrarTurno({
     required int idTurno,
@@ -637,7 +638,7 @@ class TurnosService {
   }) async {
     final token = await _tokenStorage.getToken();
     if (token == null || token.isEmpty) {
-      throw const AuthException('Sesión expirada. Inicia sesión de nuevo.', '401');
+      throw const AuthException('Sesi?n expirada. Inicia sesi?n de nuevo.', '401');
     }
 
     final base = AppEnvironmentConfig.baseUrl.endsWith('/')
@@ -670,7 +671,7 @@ class TurnosService {
     debugPrint('TurnosService: cerrarTurno statusCode=${response.statusCode}');
 
     if (response.statusCode == 401) {
-      throw const AuthException('Sesión expirada. Inicia sesión de nuevo.', '401');
+      throw const AuthException('Sesi?n expirada. Inicia sesi?n de nuevo.', '401');
     }
     if (response.statusCode == 403) {
       throw const AuthException('Acceso denegado.', '403');
@@ -680,7 +681,7 @@ class TurnosService {
     }
     if (response.statusCode == 400) {
       throw AuthException(
-        _parseMessage(response.body) ?? 'Datos inválidos.',
+        _parseMessage(response.body) ?? 'Datos inv?lidos.',
         '400',
       );
     }
@@ -693,11 +694,11 @@ class TurnosService {
     }
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
-    debugPrint('TurnosService: turno cerrado geográficamente exitosamente');
+    debugPrint('TurnosService: turno cerrado geogr?ficamente exitosamente');
     return CerrarTurnoResponse.fromJson(data);
   }
 
-  /// Cierra la bitácora de apertura del turno.
+  /// Cierra la bit?cora de apertura del turno.
   /// PATCH /api/turnos/bitacora/cierre (application/json)
   Future<CerrarBitacoraResponse> cerrarBitacoraApertura({
     required int idBitacoraVehiculo,
@@ -711,7 +712,7 @@ class TurnosService {
         '/api/turnos/bitacora/cierre',
         body: {'idBitacoraVehiculo': idBitacoraVehiculo},
       );
-      debugPrint('TurnosService: bitácora de apertura cerrada exitosamente');
+      debugPrint('TurnosService: bit?cora de apertura cerrada exitosamente');
       return CerrarBitacoraResponse.fromJson(data);
     } on AuthException catch (e) {
       debugPrint(
@@ -719,7 +720,7 @@ class TurnosService {
       );
       if (e.code == '401') {
         throw const AuthException(
-          'Tu sesión ha expirado. Inicia sesión nuevamente.',
+          'Tu sesi?n ha expirado. Inicia sesi?n nuevamente.',
           '401',
         );
       }
@@ -729,14 +730,38 @@ class TurnosService {
         'TurnosService: cerrarBitacoraApertura NetworkException ${e.code}: ${e.message}',
       );
       if (e.code == '404') {
-        throw const NetworkException('Bitácora no encontrada.', '404');
+        throw const NetworkException('Bit?cora no encontrada.', '404');
       }
       if (e.code == '500') {
         throw const NetworkException(
-          'No fue posible cerrar la bitácora. Intenta nuevamente.',
+          'No fue posible cerrar la bit?cora. Intenta nuevamente.',
           '500',
         );
       }
+      rethrow;
+    }
+  }
+
+  static const _pathListarTurnos = '/api/turnos/list';
+
+  /// Lista turnos por rango de fechas (YYYY-MM-DD).
+  Future<List<TurnoListItem>> listarTurnos({
+    required String fechaDesde,
+    required String fechaHasta,
+  }) async {
+    final path =
+        '$_pathListarTurnos?fechaDesde=$fechaDesde&fechaHasta=$fechaHasta';
+    debugPrint('TurnosService: GET $path');
+    try {
+      final data = await _client.get(path);
+      final response = TurnoListResponse.fromJson(data);
+      debugPrint('TurnosService: listarTurnos ${response.items.length} items');
+      return response.items;
+    } on AuthException catch (e) {
+      debugPrint('TurnosService: listarTurnos AuthException ${e.code}: ${e.message}');
+      rethrow;
+    } on NetworkException catch (e) {
+      debugPrint('TurnosService: listarTurnos NetworkException ${e.code}: ${e.message}');
       rethrow;
     }
   }
@@ -753,9 +778,9 @@ class TurnosService {
       }
       final campos = json?['camposFaltantes'];
       if (campos is List && campos.isNotEmpty) {
-        final lista = campos.map((e) => e.toString()).join('\n• ');
+        final lista = campos.map((e) => e.toString()).join('\nโ�ข ');
         final prefix = base != null ? '$base\n\n' : '';
-        return '${prefix}Campos faltantes:\n• $lista';
+        return '${prefix}Campos faltantes:\nโ�ข $lista';
       }
       return base;
     } catch (_) {

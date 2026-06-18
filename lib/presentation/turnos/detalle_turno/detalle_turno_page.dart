@@ -8,7 +8,8 @@ import '../control_turnos_colors.dart';
 import '../historial_turnos/historial_turnos_colors.dart';
 import '../mi_turno_provider.dart';
 import '../resumen_turno/resumen_turno_colors.dart';
-import '../../widgets/network_image_preview.dart';
+import '../../widgets/expandable_network_image.dart';
+import 'widgets/compartir_reporte_sheets.dart';
 
 /// Datos necesarios para mostrar el detalle de un turno.
 class TurnoDetalleData {
@@ -33,6 +34,8 @@ class TurnoDetalleData {
     this.estadoVehiculo = const [],
     this.estadoVehiculoCierre = const [],
     this.mostrarEstadoVehiculoCierre = false,
+    this.incidenciasGasolina = const [],
+    this.incidenciasAccidente = const [],
   });
 
   final String operador;
@@ -55,6 +58,8 @@ class TurnoDetalleData {
   final List<EstadoVehiculoItem> estadoVehiculo;
   final List<EstadoVehiculoItem> estadoVehiculoCierre;
   final bool mostrarEstadoVehiculoCierre;
+  final List<IncidenciaGasolinaItem> incidenciasGasolina;
+  final List<IncidenciaAccidenteItem> incidenciasAccidente;
 
   factory TurnoDetalleData.fromTurnoDetalle(TurnoDetalle turno) {
     final inicio = turno.bitacoraResumen?.inicio;
@@ -79,14 +84,16 @@ class TurnoDetalleData {
           turno.fechaCierre != null ? _formatearHora(turno.fechaCierre) : null,
       duracion: turno.duracion,
       distanciaKm: _distanciaRecorrida(kmInicial, kmFinal),
-      lecturaInicial: _formatearKm(kmInicial),
-      lecturaFinal: _formatearKm(kmFinal),
+      lecturaInicial: formatearKm(kmInicial),
+      lecturaFinal: formatearKm(kmFinal),
       fotoLecturaInicial: _fotoInicio(turno),
       fotoLecturaFinal: _fotoFin(turno),
       estadoVehiculo: inicio?.informacionGeneral?.estadoVehiculo ?? const [],
       estadoVehiculoCierre: fin?.informacionGeneral?.estadoVehiculo ?? const [],
       mostrarEstadoVehiculoCierre:
           fin != null && fin.informacionGeneral != null,
+      incidenciasGasolina: turno.incidenciasGasolina,
+      incidenciasAccidente: turno.incidenciasAccidente,
     );
   }
 
@@ -190,10 +197,10 @@ class TurnoDetalleData {
     if (inicial == null || finalKm == null) return '—';
     final diff = finalKm - inicial;
     if (diff < 0) return '—';
-    return _formatearKm(diff) ?? '—';
+    return formatearKm(diff) ?? '—';
   }
 
-  static String? _formatearKm(num? km) {
+  static String? formatearKm(num? km) {
     if (km == null) return null;
     if (km == km.roundToDouble()) {
       return km.round().toString().replaceAllMapped(
@@ -233,6 +240,20 @@ class TurnoDetalleData {
     final m = local.minute.toString().padLeft(2, '0');
     return '$h:$m';
   }
+
+  static String formatearFechaHoraRegistro(DateTime? fecha) {
+    if (fecha == null) return '—';
+    final local = fecha.toLocal();
+    final mes = _mesesCortos[local.month - 1];
+    final h = local.hour.toString().padLeft(2, '0');
+    final m = local.minute.toString().padLeft(2, '0');
+    return '${local.day} $mes ${local.year} $h:$m';
+  }
+
+  static String formatearMonedaMxn(double? valor) {
+    if (valor == null) return '—';
+    return '\$${valor.toStringAsFixed(2)} MXN';
+  }
 }
 
 /// Pantalla de detalle de un turno (empleado, vehículo, horario, odómetro).
@@ -256,6 +277,17 @@ class _DetalleTurnoPageState extends ConsumerState<DetalleTurnoPage> {
       () => ref.read(turnoDetalleProvider.notifier).fetch(widget.idTurno),
     );
   }
+
+  void _mostrarOpcionesCompartir(BuildContext context) {
+    showCompartirReporteOpciones(
+      context,
+      turnoId: widget.idTurno,
+      onCompartir: _compartirReporte,
+    );
+  }
+
+  /// Comportamiento actual de compartir (sin cambios).
+  void _compartirReporte() {}
 
   @override
   Widget build(BuildContext context) {
@@ -282,7 +314,7 @@ class _DetalleTurnoPageState extends ConsumerState<DetalleTurnoPage> {
         actions: [
           IconButton(
             icon: Icon(Icons.share_outlined, color: HistorialTurnosColors.textPrimary(context)),
-            onPressed: () {},
+            onPressed: () => _mostrarOpcionesCompartir(context),
           ),
         ],
       ),
@@ -326,6 +358,14 @@ class _DetalleTurnoPageState extends ConsumerState<DetalleTurnoPage> {
             _buildCardOdometro(context, data),
             const SizedBox(height: 16),
             _buildCardKilometrajeActual(context, data),
+            if (data.incidenciasGasolina.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              _buildCardIncidenciasGasolina(context, data),
+            ],
+            if (data.incidenciasAccidente.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              _buildCardIncidenciasAccidente(context, data),
+            ],
             // TODO: Se oculta temporalmente hasta contar con
             // información oficial de distancia recorrida.
             // const SizedBox(height: 16),
@@ -941,35 +981,302 @@ class _DetalleTurnoPageState extends ConsumerState<DetalleTurnoPage> {
     String? url, {
     required String heroTag,
   }) {
-    const alturaFoto = 56.0 * 1.3;
-    return Container(
-      height: alturaFoto,
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: HistorialTurnosColors.background(context),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: url != null && url.isNotEmpty
-          ? GestureDetector(
-              onTap: () => showNetworkImagePreview(
-                context,
-                imageUrl: url,
-                heroTag: heroTag,
+    return ExpandableNetworkImage(
+      imageUrl: url,
+      heroTag: heroTag,
+      backgroundColor: HistorialTurnosColors.background(context),
+      placeholder: _placeholderOdometro(context),
+    );
+  }
+
+  Widget _buildCardIncidenciasGasolina(
+    BuildContext context,
+    TurnoDetalleData data,
+  ) {
+    return _buildIncidenciasCard(
+      context,
+      titulo: 'Registro de Combustible',
+      icon: Icons.local_gas_station_outlined,
+      children: [
+        for (int i = 0; i < data.incidenciasGasolina.length; i++) ...[
+          if (i > 0)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Divider(
+                color: HistorialTurnosColors.textSecondary(context)
+                    .withValues(alpha: 0.35),
+                height: 1,
+                thickness: 1,
               ),
-              child: Hero(
-                tag: heroTag,
-                child: Image.network(
-                  url,
-                  fit: BoxFit.cover,
-                  width: double.infinity,
-                  height: alturaFoto,
-                  errorBuilder: (context, error, stackTrace) =>
-                      _placeholderOdometro(context),
+            ),
+          _buildIncidenciaGasolinaItem(
+            context,
+            data.incidenciasGasolina[i],
+            turnoId: widget.idTurno,
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildOdometroStyleFotoColumn(
+    BuildContext context, {
+    required String label,
+    required String? url,
+    required String heroTag,
+  }) {
+    if (url == null || url.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: HistorialTurnosColors.textSecondary(context),
+              ),
+        ),
+        const SizedBox(height: 8),
+        _buildFotoOdometro(context, url, heroTag: heroTag),
+      ],
+    );
+  }
+
+  Widget _buildIncidenciaGasolinaItem(
+    BuildContext context,
+    IncidenciaGasolinaItem item, {
+    required int turnoId,
+  }) {
+    final tieneFotoTablero = item.fotoTableroAntes?.isNotEmpty == true;
+    final tieneFotoBomba = item.fotoBomba?.isNotEmpty == true;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildIncidenciaCampo(
+          context,
+          'Fecha',
+          TurnoDetalleData.formatearFechaHoraRegistro(item.fechaRegistro),
+        ),
+        const SizedBox(height: 10),
+        _buildIncidenciaCampo(
+          context,
+          'Litros cargados',
+          item.litrosCargados != null
+              ? '${item.litrosCargados!.toStringAsFixed(1)} L'
+              : '—',
+        ),
+        const SizedBox(height: 10),
+        _buildIncidenciaCampo(
+          context,
+          'Total pagado',
+          TurnoDetalleData.formatearMonedaMxn(item.totalPagado),
+        ),
+        const SizedBox(height: 10),
+        _buildIncidenciaCampo(
+          context,
+          'Kilometraje',
+          item.kilometraje != null
+              ? '${TurnoDetalleData.formatearKm(item.kilometraje) ?? item.kilometraje} km'
+              : '—',
+        ),
+        if (tieneFotoTablero || tieneFotoBomba) ...[
+          const SizedBox(height: 16),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (tieneFotoTablero)
+                Expanded(
+                  child: _buildOdometroStyleFotoColumn(
+                    context,
+                    label: 'Foto tablero',
+                    url: item.fotoTableroAntes,
+                    heroTag: 'combustible-$turnoId-${item.id}-tablero',
+                  ),
+                ),
+              if (tieneFotoTablero && tieneFotoBomba) const SizedBox(width: 16),
+              if (tieneFotoBomba)
+                Expanded(
+                  child: _buildOdometroStyleFotoColumn(
+                    context,
+                    label: 'Foto bomba',
+                    url: item.fotoBomba,
+                    heroTag: 'combustible-$turnoId-${item.id}-bomba',
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildCardIncidenciasAccidente(
+    BuildContext context,
+    TurnoDetalleData data,
+  ) {
+    return _buildIncidenciasCard(
+      context,
+      titulo: 'Incidencias de Accidente',
+      icon: Icons.car_crash_outlined,
+      children: [
+        for (int i = 0; i < data.incidenciasAccidente.length; i++) ...[
+          if (i > 0)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Divider(
+                color: HistorialTurnosColors.textSecondary(context)
+                    .withValues(alpha: 0.35),
+                height: 1,
+                thickness: 1,
+              ),
+            ),
+          _buildIncidenciaAccidenteItem(
+            context,
+            data.incidenciasAccidente[i],
+            turnoId: widget.idTurno,
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildIncidenciaAccidenteItem(
+    BuildContext context,
+    IncidenciaAccidenteItem item, {
+    required int turnoId,
+  }) {
+    final tipo = item.catTipoIncidente?.nombre?.trim();
+    final evidencias = <({String label, String url})>[
+      if (item.fotoEvidencia1 != null)
+        (label: 'Evidencia 1', url: item.fotoEvidencia1!),
+      if (item.fotoEvidencia2 != null)
+        (label: 'Evidencia 2', url: item.fotoEvidencia2!),
+      if (item.fotoEvidencia3 != null)
+        (label: 'Evidencia 3', url: item.fotoEvidencia3!),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildIncidenciaCampo(
+          context,
+          'Fecha',
+          TurnoDetalleData.formatearFechaHoraRegistro(item.fechaRegistro),
+        ),
+        const SizedBox(height: 10),
+        _buildIncidenciaCampo(
+          context,
+          'Tipo de incidente',
+          (tipo != null && tipo.isNotEmpty) ? tipo : 'Sin categoría',
+        ),
+        const SizedBox(height: 10),
+        _buildIncidenciaCampo(
+          context,
+          'Descripción',
+          (item.descripcion?.trim().isNotEmpty == true)
+              ? item.descripcion!.trim()
+              : '—',
+        ),
+        if (evidencias.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          ...evidencias.map(
+            (evidencia) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    evidencia.label,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: HistorialTurnosColors.textSecondary(context),
+                        ),
+                  ),
+                  const SizedBox(height: 6),
+                  ExpandableNetworkImage(
+                    imageUrl: evidencia.url,
+                    heroTag:
+                        'incidencia-accidente-$turnoId-${item.id}-${evidencia.label}',
+                    hideWhenEmpty: true,
+                    backgroundColor:
+                        HistorialTurnosColors.background(context),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildIncidenciasCard(
+    BuildContext context, {
+    required String titulo,
+    required IconData icon,
+    required List<Widget> children,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: HistorialTurnosColors.cardBackground(context),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: HistorialTurnosColors.accentWine, size: 22),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  titulo,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: HistorialTurnosColors.textPrimary(context),
+                        fontWeight: FontWeight.bold,
+                      ),
                 ),
               ),
-            )
-          : _placeholderOdometro(context),
+            ],
+          ),
+          const SizedBox(height: 16),
+          ...children,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildIncidenciaCampo(
+    BuildContext context,
+    String etiqueta,
+    String valor,
+  ) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          flex: 2,
+          child: Text(
+            '$etiqueta:',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: HistorialTurnosColors.textSecondary(context),
+                  fontWeight: FontWeight.w500,
+                ),
+          ),
+        ),
+        Expanded(
+          flex: 3,
+          child: Text(
+            valor,
+            textAlign: TextAlign.end,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: HistorialTurnosColors.textPrimary(context),
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+        ),
+      ],
     );
   }
 

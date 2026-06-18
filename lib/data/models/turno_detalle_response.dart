@@ -43,6 +43,8 @@ class TurnoDetalle {
     this.evidenciaApertura,
     this.evidenciaCierre,
     this.bitacoraResumen,
+    this.incidenciasGasolina = const [],
+    this.incidenciasAccidente = const [],
   });
 
   final int id;
@@ -56,6 +58,8 @@ class TurnoDetalle {
   final String? evidenciaApertura;
   final String? evidenciaCierre;
   final BitacoraResumenDetalle? bitacoraResumen;
+  final List<IncidenciaGasolinaItem> incidenciasGasolina;
+  final List<IncidenciaAccidenteItem> incidenciasAccidente;
 
   factory TurnoDetalle.fromJson(Map<String, dynamic> json) {
     return TurnoDetalle(
@@ -86,7 +90,26 @@ class TurnoDetalle {
               json['bitacoraResumen'] as Map<String, dynamic>,
             )
           : null,
+      incidenciasGasolina: _parseIncidenciasGasolina(json['incidenciasGasolina']),
+      incidenciasAccidente:
+          _parseIncidenciasAccidente(json['incidenciasAccidente']),
     );
+  }
+
+  static List<IncidenciaGasolinaItem> _parseIncidenciasGasolina(dynamic raw) {
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map<String, dynamic>>()
+        .map(IncidenciaGasolinaItem.fromJson)
+        .toList();
+  }
+
+  static List<IncidenciaAccidenteItem> _parseIncidenciasAccidente(dynamic raw) {
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map<String, dynamic>>()
+        .map(IncidenciaAccidenteItem.fromJson)
+        .toList();
   }
 
   static DateTime? _parseDateTime(dynamic raw) {
@@ -256,6 +279,97 @@ class TableroDetalle {
     return TableroDetalle(
       fotoTablero: json['fotoTablero'] as String?,
       kmActual: json['kmActual'] as num?,
+    );
+  }
+}
+
+class IncidenciaGasolinaItem {
+  const IncidenciaGasolinaItem({
+    required this.id,
+    this.litrosCargados,
+    this.totalPagado,
+    this.kilometraje,
+    this.fotoTableroAntes,
+    this.fotoTableroDespues,
+    this.fotoBomba,
+    this.fechaRegistro,
+  });
+
+  final int id;
+  final double? litrosCargados;
+  final double? totalPagado;
+  final int? kilometraje;
+  final String? fotoTableroAntes;
+  final String? fotoTableroDespues;
+  final String? fotoBomba;
+  final DateTime? fechaRegistro;
+
+  factory IncidenciaGasolinaItem.fromJson(Map<String, dynamic> json) {
+    return IncidenciaGasolinaItem(
+      id: (json['id'] as num?)?.toInt() ?? 0,
+      litrosCargados: (json['litrosCargados'] as num?)?.toDouble(),
+      totalPagado: (json['totalPagado'] as num?)?.toDouble(),
+      kilometraje: (json['kilometraje'] as num?)?.toInt(),
+      fotoTableroAntes: _parseUrl(json['fotoTableroAntes']),
+      fotoTableroDespues: _parseUrl(json['fotoTableroDespues']),
+      fotoBomba: _parseUrl(json['fotoBomba']),
+      fechaRegistro: TurnoDetalle._parseDateTime(json['fechaRegistro']),
+    );
+  }
+
+  static String? _parseUrl(dynamic raw) {
+    if (raw is! String) return null;
+    final trimmed = raw.trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
+}
+
+class IncidenciaAccidenteItem {
+  const IncidenciaAccidenteItem({
+    required this.id,
+    this.descripcion,
+    this.fotoEvidencia1,
+    this.fotoEvidencia2,
+    this.fotoEvidencia3,
+    this.fechaRegistro,
+    this.catTipoIncidente,
+  });
+
+  final int id;
+  final String? descripcion;
+  final String? fotoEvidencia1;
+  final String? fotoEvidencia2;
+  final String? fotoEvidencia3;
+  final DateTime? fechaRegistro;
+  final CatTipoIncidente? catTipoIncidente;
+
+  factory IncidenciaAccidenteItem.fromJson(Map<String, dynamic> json) {
+    return IncidenciaAccidenteItem(
+      id: (json['id'] as num?)?.toInt() ?? 0,
+      descripcion: json['descripcion'] as String?,
+      fotoEvidencia1: IncidenciaGasolinaItem._parseUrl(json['fotoEvidencia1']),
+      fotoEvidencia2: IncidenciaGasolinaItem._parseUrl(json['fotoEvidencia2']),
+      fotoEvidencia3: IncidenciaGasolinaItem._parseUrl(json['fotoEvidencia3']),
+      fechaRegistro: TurnoDetalle._parseDateTime(json['fechaRegistro']),
+      catTipoIncidente: json['catTipoIncidente'] is Map<String, dynamic>
+          ? CatTipoIncidente.fromJson(
+              json['catTipoIncidente'] as Map<String, dynamic>,
+            )
+          : null,
+    );
+  }
+}
+
+class CatTipoIncidente {
+  const CatTipoIncidente({this.id, this.nombre});
+
+  final int? id;
+  final String? nombre;
+
+  factory CatTipoIncidente.fromJson(Map<String, dynamic> json) {
+    return CatTipoIncidente(
+      id: (json['id'] as num?)?.toInt(),
+      nombre: json['nombre'] as String?,
     );
   }
 }

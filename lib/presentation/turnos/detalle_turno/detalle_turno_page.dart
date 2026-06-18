@@ -370,6 +370,8 @@ class _DetalleTurnoPageState extends ConsumerState<DetalleTurnoPage> {
             // información oficial de distancia recorrida.
             // const SizedBox(height: 16),
             // _buildCardDistanciaRecorrida(context, data),
+            const SizedBox(height: 24),
+            _buildFinDetalleTurno(context),
           ],
         ),
       ),
@@ -383,6 +385,38 @@ class _DetalleTurnoPageState extends ConsumerState<DetalleTurnoPage> {
       return error.message;
     }
     return 'No se pudo cargar el detalle del turno.';
+  }
+
+  Widget _buildFinDetalleTurno(BuildContext context) {
+    final secondary = HistorialTurnosColors.textSecondary(context);
+    final dividerColor = secondary.withValues(alpha: 0.35);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Expanded(child: Divider(color: dividerColor, height: 1)),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.check_circle_outline, size: 15, color: secondary),
+                const SizedBox(width: 6),
+                Text(
+                  'Fin del detalle del turno',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: secondary,
+                        fontWeight: FontWeight.w500,
+                      ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(child: Divider(color: dividerColor, height: 1)),
+        ],
+      ),
+    );
   }
 
   // ignore: unused_element — se reactivará cuando exista distancia oficial del API.

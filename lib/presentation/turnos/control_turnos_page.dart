@@ -197,10 +197,10 @@ class _ControlTurnosPageState extends ConsumerState<ControlTurnosPage> {
               ),
         ),
         actions: [
-          IconButton(
-            icon: Icon(Icons.notifications_none, color: ControlTurnosColors.textPrimary(context)),
-            onPressed: () {},
-          ),
+          // IconButton(
+          //   icon: Icon(Icons.notifications_none, color: ControlTurnosColors.textPrimary(context)),
+          //   onPressed: () {},
+          // ),
           IconButton(
             icon: Icon(Icons.menu, color: ControlTurnosColors.textPrimary(context)),
             onPressed: widget.onOpenDrawer ?? widget.onBack,

@@ -1,22 +1,20 @@
+import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 
 import '../../../core/constants/route_constants.dart';
 import '../../../core/errors/app_exception.dart';
-import '../../../data/models/user_model.dart';
 import '../../controllers/auth_controller.dart';
 import '../../widgets/app_alert_banner.dart';
 import 'face_auth_capture_page.dart';
 import 'face_auth_colors.dart';
 
-/// Credenciales internas para el uso de los servicios Face Auth (login API).
-const String _faceAuthUsuario = 'admin@shiftcontrol.mx';
-const String _faceAuthContrasena = 'P@ssw0rd.';
-
-/// Flujo: login interno → una pantalla con dos capturas (misma pantalla, 2 s entre ellas) → liveness → embed → validateFace.
+/// Flujo: captura doble → liveness → embed → validateFace → sesión ShiftControl.
 class FaceAuthFlowPage extends ConsumerStatefulWidget {
   const FaceAuthFlowPage({super.key});
 
@@ -25,51 +23,75 @@ class FaceAuthFlowPage extends ConsumerStatefulWidget {
 }
 
 class _FaceAuthFlowPageState extends ConsumerState<FaceAuthFlowPage> {
-  String? _token;
-  String? _idCliente;
-  String? _usuarioFromMe;
   Uint8List? _capture1;
   Uint8List? _capture2;
-  bool _isLoadingCredentials = true;
   bool _isValidating = false;
+  bool _redirectingToLogin = false;
   String? _livenessFailedReason;
   bool _validateFace404 = false;
 
-  Future<void> _start() async {
-    setState(() => _isLoadingCredentials = true);
+  void _clearTemporaryState() {
+    _capture1 = null;
+    _capture2 = null;
+  }
+
+  Future<void> _returnToLogin({
+    required String title,
+    required String message,
+  }) async {
+    if (_redirectingToLogin || !mounted) return;
+    _redirectingToLogin = true;
+
+    _clearTemporaryState();
+    setState(() {
+      _isValidating = false;
+      _livenessFailedReason = null;
+      _validateFace404 = false;
+    });
+
+    if (!mounted) return;
+    showAppAlertBanner(
+      context,
+      type: AppAlertType.error,
+      title: title,
+      message: message,
+    );
+    Navigator.of(context).pushNamedAndRemoveUntil(
+      RouteConstants.login,
+      (_) => false,
+    );
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _openDoubleCapture());
+  }
+
+  Future<({double? latitud, double? longitud})> _tryGetLocation() async {
     try {
-      final credentials = await ref.read(faceAuthServiceProvider).loginAndGetIdCliente(
-            _faceAuthUsuario,
-            _faceAuthContrasena,
-          );
-      if (!mounted) return;
-      setState(() {
-        _token = credentials.token;
-        _idCliente = credentials.idCliente;
-        _usuarioFromMe = credentials.usuario;
-        _isLoadingCredentials = false;
-      });
-      _openDoubleCapture();
-    } on AuthException catch (e) {
-      if (!mounted) return;
-      setState(() => _isLoadingCredentials = false);
-      showAppAlertBanner(context, type: AppAlertType.error, title: 'Error de acceso', message: e.message);
-      Navigator.of(context).pop();
-    } on NetworkException catch (e) {
-      if (!mounted) return;
-      setState(() => _isLoadingCredentials = false);
-      showAppAlertBanner(context, type: AppAlertType.error, title: 'Error de conexión', message: e.message);
-      Navigator.of(context).pop();
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _isLoadingCredentials = false);
-      showAppAlertBanner(
-        context,
-        type: AppAlertType.error,
-        title: 'Error',
-        message: 'No se pudo conectar con el servicio. Intenta de nuevo.',
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return (latitud: null, longitud: null);
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        return (latitud: null, longitud: null);
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.medium,
+          timeLimit: Duration(seconds: 8),
+        ),
       );
-      Navigator.of(context).pop();
+      return (latitud: position.latitude, longitud: position.longitude);
+    } catch (e) {
+      debugPrint('[FaceAuth] ubicación no disponible: $e');
+      return (latitud: null, longitud: null);
     }
   }
 
@@ -111,35 +133,28 @@ class _FaceAuthFlowPageState extends ConsumerState<FaceAuthFlowPage> {
   }
 
   Future<void> _runLivenessAndValidate() async {
-    final token = _token;
-    final idCliente = _idCliente;
     final c1 = _capture1;
     final c2 = _capture2;
-    if (token == null || idCliente == null || c1 == null || c2 == null) return;
+    if (c1 == null || c2 == null) return;
     setState(() => _isValidating = true);
     try {
-      final validateResult = await ref.read(faceAuthServiceProvider).livenessEmbedAndValidateFace(
-            token: token,
-            idCliente: idCliente,
+      final ubicacion = await _tryGetLocation();
+      final result = await ref.read(faceAuthServiceProvider).livenessEmbedAndValidateFace(
             capture1: c1,
             capture2: c2,
+            latitud: ubicacion.latitud,
+            longitud: ubicacion.longitud,
           );
       if (!mounted) return;
-      final name = [
-        validateResult.nombre,
-        validateResult.paterno,
-        validateResult.materno,
-      ].where((e) => e != null && e.isNotEmpty).join(' ');
-      final user = UserModel(
-        id: idCliente,
-        email: _usuarioFromMe ?? _faceAuthUsuario,
-        name: name.isNotEmpty ? name : validateResult.nombre,
-        apellidoPaterno: validateResult.paterno,
-        apellidoMaterno: validateResult.materno,
-        userName: _usuarioFromMe,
-      );
-      await ref.read(authControllerProvider.notifier).setSessionFromFaceAuth(user, token);
+      await ref.read(authRepositoryProvider).saveSession(
+            result.user,
+            result.session.token,
+            refreshToken: result.session.refreshToken,
+            expiresIn: result.session.expiresIn,
+          );
+      await ref.read(authControllerProvider.notifier).checkAuth();
       if (!mounted) return;
+      _clearTemporaryState();
       showAppAlertBanner(
         context,
         type: AppAlertType.success,
@@ -149,41 +164,40 @@ class _FaceAuthFlowPageState extends ConsumerState<FaceAuthFlowPage> {
       Navigator.of(context).pushReplacementNamed(RouteConstants.home);
     } on AuthException catch (e) {
       if (!mounted) return;
-      if (e.code == '404') {
-        setState(() => _validateFace404 = true);
-      } else {
-        if (e.code == 'liveness_failed') {
-          setState(() => _livenessFailedReason = e.message);
-          // No mostrar banner: se muestra la pantalla completa "No pudimos verificar tu rostro".
-        } else {
-          showAppAlertBanner(
-            context,
-            type: AppAlertType.error,
-            title: 'Rostro no reconocido',
-            message: e.message,
-          );
-        }
-      }
+      await _returnToLogin(
+        title: 'Error',
+        message: e.message.isNotEmpty ? e.message : 'No fue posible validar tu rostro. Intenta de nuevo.',
+      );
     } on NetworkException catch (e) {
       if (!mounted) return;
-      showAppAlertBanner(context, type: AppAlertType.error, title: 'Error', message: e.message);
-    } catch (e) {
+      await _returnToLogin(
+        title: 'Error de conexión',
+        message: e.message.isNotEmpty ? e.message : 'No fue posible comunicarse con el servidor. Intenta nuevamente.',
+      );
+    } on SocketException catch (_) {
       if (!mounted) return;
-      showAppAlertBanner(
-        context,
-        type: AppAlertType.error,
+      await _returnToLogin(
+        title: 'Error de conexión',
+        message: 'No fue posible comunicarse con el servidor. Intenta nuevamente.',
+      );
+    } on TimeoutException catch (_) {
+      if (!mounted) return;
+      await _returnToLogin(
+        title: 'Error de conexión',
+        message: 'No fue posible comunicarse con el servidor. Intenta nuevamente.',
+      );
+    } catch (e, st) {
+      debugPrint('! FaceAuthFlowPage error: $e\n$st');
+      if (!mounted) return;
+      await _returnToLogin(
         title: 'Error',
-        message: e is Exception ? e.toString() : 'No se pudo validar tu rostro. Intenta de nuevo.',
+        message: 'No fue posible validar tu rostro. Intenta de nuevo.',
       );
     } finally {
-      if (mounted) setState(() => _isValidating = false);
+      if (mounted && !_redirectingToLogin) {
+        setState(() => _isValidating = false);
+      }
     }
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _start());
   }
 
   @override
@@ -351,23 +365,8 @@ class _FaceAuthFlowPageState extends ConsumerState<FaceAuthFlowPage> {
         ),
       );
     }
-    return Scaffold(
-      backgroundColor: FaceAuthColors.background(context),
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const CircularProgressIndicator(),
-            const SizedBox(height: 24),
-            Text(
-              'Conectando...',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: FaceAuthColors.textPrimary(context),
-                  ),
-            ),
-          ],
-        ),
-      ),
+    return const Scaffold(
+      body: SizedBox.shrink(),
     );
   }
 }

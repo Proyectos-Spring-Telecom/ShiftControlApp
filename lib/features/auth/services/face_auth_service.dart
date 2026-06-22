@@ -4,61 +4,26 @@ import 'package:flutter/foundation.dart';
 
 import '../../../core/errors/app_exception.dart';
 import '../../../data/datasources/remote/face_auth_remote_datasource.dart';
+import '../../../data/models/user_model.dart';
 
-/// Resultado de los pasos 1 y 2 (login + GET /auth/me). Usar en otros servicios API.
-class FaceAuthCredentialsResult {
-  const FaceAuthCredentialsResult({
-    required this.token,
-    required this.idCliente,
-    this.idUsuario,
-    this.idSolucion,
-    this.usuario,
-    this.isRoot,
-    this.rol,
-  });
-  final String token;
-  final String idCliente;
-  final int? idUsuario;
-  final dynamic idSolucion;
-  final String? usuario;
-  final bool? isRoot;
-  final String? rol;
-}
-
-/// Servicio que orquesta los 6 pasos del flujo Face Auth.
+/// Servicio que orquesta el flujo Face Auth vía BFF ShiftControl.
 class FaceAuthService {
   FaceAuthService(this._datasource);
 
   final FaceAuthRemoteDatasource _datasource;
 
-  /// Pasos 1 y 2: login y obtener idCliente.
-  Future<FaceAuthCredentialsResult> loginAndGetIdCliente(String usuario, String contrasena) async {
-    if (usuario.trim().isEmpty || contrasena.isEmpty) {
-      throw const AuthException('Usuario y contraseña son obligatorios.');
-    }
-    final loginResult = await _datasource.login(usuario.trim(), contrasena);
-    final meResult = await _datasource.me(loginResult.accessToken);
-    return FaceAuthCredentialsResult(
-      token: loginResult.accessToken,
-      idCliente: meResult.idCliente,
-      idUsuario: meResult.idUsuario,
-      idSolucion: meResult.idSolucion,
-      usuario: meResult.usuario,
-      isRoot: meResult.isRoot,
-      rol: meResult.rol,
-    );
-  }
-
-  /// Pasos 4, 5 y 6: liveness-check → embed → validateFace.
-  /// [capture1] y [capture2] son las dos imágenes en bytes.
-  Future<FaceAuthValidateResult> livenessEmbedAndValidateFace({
-    required String token,
-    required String idCliente,
+  /// liveness-check → embed (captura2) → validateFace → GET /api/login/me.
+  Future<({FaceAuthValidateSessionResult session, UserModel user})>
+      livenessEmbedAndValidateFace({
     required Uint8List capture1,
     required Uint8List capture2,
+    double? latitud,
+    double? longitud,
   }) async {
+    final embedJwt = await _datasource.obtainEmbedServiceJwt();
+
     final liveness = await _datasource.livenessCheck(
-      token,
+      embedJwt,
       capture1.toList(),
       capture2.toList(),
     );
@@ -68,10 +33,26 @@ class FaceAuthService {
         'liveness_failed',
       );
     }
-    final embedding = await _datasource.embed(token, capture2.toList());
-    if (embedding.length != 512) {
-      debugPrint('! FaceAuthService: embedding length ${embedding.length}, expected 512');
+
+    final embedding = await _datasource.embed(embedJwt, capture2.toList());
+    if (embedding.isEmpty) {
+      throw const AuthException('El embedding está vacío.', 'invalid_embedding');
     }
-    return _datasource.validateFace(token, idCliente, embedding);
+    if (embedding.length != 512) {
+      debugPrint('Embedding length inválido: ${embedding.length}');
+      throw AuthException(
+        'El embedding debe tener 512 elementos, se recibieron ${embedding.length}.',
+        'invalid_embedding',
+      );
+    }
+
+    final session = await _datasource.validateFace(
+      embedding,
+      latitud: latitud,
+      longitud: longitud,
+    );
+
+    final user = await _datasource.fetchLoginMe(session.token);
+    return (session: session, user: user);
   }
 }

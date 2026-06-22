@@ -6,32 +6,11 @@ import 'package:http_parser/http_parser.dart';
 
 import '../../../config/app_environment.dart';
 import '../../../core/errors/app_exception.dart';
+import '../../models/login_me_response.dart';
+import '../../models/login_tokens_response.dart';
+import '../../models/user_model.dart';
 
-/// Resultado del login Face Auth.
-class FaceAuthLoginResult {
-  const FaceAuthLoginResult({required this.accessToken});
-  final String accessToken;
-}
-
-/// Resultado de GET /auth/me (datos del usuario autenticado; usado en otros servicios API).
-class FaceAuthMeResult {
-  const FaceAuthMeResult({
-    required this.idCliente,
-    this.idUsuario,
-    this.idSolucion,
-    this.usuario,
-    this.isRoot,
-    this.rol,
-  });
-  final String idCliente;
-  final int? idUsuario;
-  final dynamic idSolucion;
-  final String? usuario;
-  final bool? isRoot;
-  final String? rol;
-}
-
-/// Resultado de liveness-check.
+/// Resultado de POST /api/embed/liveness-check.
 class FaceAuthLivenessResult {
   const FaceAuthLivenessResult({required this.passed, this.reason, this.score});
   final bool passed;
@@ -39,48 +18,63 @@ class FaceAuthLivenessResult {
   final num? score;
 }
 
-/// Resultado de validateFace (persona reconocida).
-class FaceAuthValidateResult {
-  const FaceAuthValidateResult({
-    required this.success,
-    required this.nombre,
-    this.paterno,
-    this.materno,
-    this.distancia,
+/// Sesión emitida por POST /api/auth/validateFace.
+class FaceAuthValidateSessionResult {
+  const FaceAuthValidateSessionResult({
+    required this.token,
+    this.refreshToken,
+    this.expiresIn,
   });
-  final bool success;
-  final String nombre;
-  final String? paterno;
-  final String? materno;
-  final num? distancia;
+
+  final String token;
+  final String? refreshToken;
+  final int? expiresIn;
 }
 
-/// Fuente de datos remota para Face Auth (API BehaviorIQ).
+/// Fuente de datos remota para Face Auth vía BFF ShiftControl.
 abstract interface class FaceAuthRemoteDatasource {
-  Future<FaceAuthLoginResult> login(String usuario, String contrasena);
-  Future<FaceAuthMeResult> me(String token);
-  Future<FaceAuthLivenessResult> livenessCheck(String token, List<int> image1, List<int> image2);
-  Future<List<double>> embed(String token, List<int> imageBytes);
-  Future<FaceAuthValidateResult> validateFace(String token, String idCliente, List<double> embedding);
+  Future<String> obtainEmbedServiceJwt();
+
+  Future<FaceAuthLivenessResult> livenessCheck(
+    String jwt,
+    List<int> image1,
+    List<int> image2,
+  );
+
+  Future<List<double>> embed(String jwt, List<int> imageBytes);
+
+  Future<FaceAuthValidateSessionResult> validateFace(
+    List<double> embedding, {
+    double? latitud,
+    double? longitud,
+  });
+
+  Future<UserModel> fetchLoginMe(String sessionToken);
 }
 
 class FaceAuthRemoteDatasourceImpl implements FaceAuthRemoteDatasource {
   FaceAuthRemoteDatasourceImpl({String? baseUrl})
-      : _baseUrl = baseUrl ?? AppEnvironmentConfig.faceAuthBaseUrl;
+      : _baseUrl = baseUrl ?? AppEnvironmentConfig.baseUrl;
 
   final String _baseUrl;
 
-  String get _livenessBaseUrl =>
-      AppEnvironmentConfig.faceAuthLivenessBaseUrl ?? _baseUrl;
+  static const _pathLogin = '/api/login';
+  static const _pathLivenessCheck = '/api/embed/liveness-check';
+  static const _pathEmbed = '/api/embed';
+  static const _pathValidateFace = '/api/auth/validateFace';
+  static const _pathLoginMe = '/api/login/me';
+  static const _requestTimeout = Duration(seconds: 30);
 
-  Uri _uri(String path) {
-    final p = path.startsWith('/') ? path.substring(1) : path;
-    return Uri.parse('$_baseUrl/$p');
-  }
+  /// Credenciales de servicio para JWT de liveness/embed (BFF ShiftControl).
+  static const _embedServiceUser = 'admin@shiftcontrol.mx';
+  static const _embedServicePassword = 'P@ssw0rd.';
 
-  Uri _uriLiveness(String path) {
+  static final _contentTypeJpeg = MediaType('image', 'jpeg');
+
+  Uri _uri(String path, {Map<String, String>? query}) {
+    final base = _baseUrl.endsWith('/') ? _baseUrl : '$_baseUrl/';
     final p = path.startsWith('/') ? path.substring(1) : path;
-    return Uri.parse('$_livenessBaseUrl/$p');
+    return Uri.parse('$base$p').replace(queryParameters: query);
   }
 
   String? _parseMessage(String body) {
@@ -88,107 +82,134 @@ class FaceAuthRemoteDatasourceImpl implements FaceAuthRemoteDatasource {
       final json = jsonDecode(body) as Map<String, dynamic>?;
       if (json == null) return null;
       final msg = json['message'] ?? json['error'] ?? json['msg'] ?? json['reason'];
-      return msg is String ? msg : null;
+      if (msg is String) return msg;
+      if (msg is List) return msg.join('\n');
+      return null;
     } catch (_) {
       return null;
     }
   }
 
-  void _handleResponse(http.Response response) {
+  void _throwForStatus(http.Response response) {
     if (response.statusCode >= 200 && response.statusCode < 300) return;
-    final msg = _parseMessage(response.body) ?? 'Error ${response.statusCode}';
-    if (response.statusCode == 400 || response.statusCode == 401) {
-      throw AuthException(msg, '${response.statusCode}');
+
+    final serverMsg = _parseMessage(response.body);
+    final code = '${response.statusCode}';
+
+    switch (response.statusCode) {
+      case 400:
+      case 401:
+      case 403:
+      case 404:
+        throw AuthException(
+          serverMsg?.isNotEmpty == true ? serverMsg! : 'Error $code',
+          code,
+        );
+      case 429:
+        throw NetworkException(
+          serverMsg?.isNotEmpty == true
+              ? serverMsg!
+              : 'Demasiados intentos. Intenta nuevamente más tarde.',
+          code,
+        );
+      case 500:
+        throw NetworkException(
+          serverMsg?.isNotEmpty == true ? serverMsg! : 'Error al validar identidad',
+          code,
+        );
+      case 503:
+        throw NetworkException(
+          serverMsg?.isNotEmpty == true
+              ? serverMsg!
+              : 'Servicio de rostro no disponible.',
+          code,
+        );
+      default:
+        throw NetworkException(
+          serverMsg ?? 'Error ${response.statusCode}',
+          code,
+        );
     }
-    throw NetworkException(msg, '${response.statusCode}');
   }
 
   @override
-  Future<FaceAuthLoginResult> login(String usuario, String contrasena) async {
-    final body = jsonEncode({'usuario': usuario, 'contrasena': contrasena});
-    final response = await http.post(
-      _uri('auth/login'),
-      headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
-      body: body,
-    );
-    debugPrint('[FaceAuth] Paso 1 - auth/login: status=${response.statusCode}');
-    debugPrint('[FaceAuth] auth/login response body: ${response.body}');
-    _handleResponse(response);
+  Future<String> obtainEmbedServiceJwt() async {
+    final response = await http
+        .post(
+          _uri(_pathLogin, query: const {'Nombres': 'SIT'}),
+          headers: const {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: jsonEncode({
+            'userName': _embedServiceUser,
+            'password': _embedServicePassword,
+          }),
+        )
+        .timeout(
+          _requestTimeout,
+          onTimeout: () => throw const NetworkException(
+            'La solicitud tardó demasiado. Intenta nuevamente.',
+            '408',
+          ),
+        );
+    debugPrint('[FaceAuth] POST $_pathLogin (embed JWT): status=${response.statusCode}');
+    _throwForStatus(response);
+
     final data = jsonDecode(response.body) as Map<String, dynamic>;
-    final token = data['accessToken'] as String? ?? data['token'] as String? ?? data['access_token'] as String?;
-    if (token == null || token.isEmpty) {
-      throw const AuthException('No se recibió token del servidor.');
+    final tokens = LoginTokensResponse.fromJson(data);
+    if (tokens.token.isEmpty) {
+      throw const AuthException('No se recibió JWT de servicio para embed.');
     }
-    debugPrint('[FaceAuth] auth/login: token recibido (length=${token.length})');
-    return FaceAuthLoginResult(accessToken: token);
+    return tokens.token;
   }
 
   @override
-  Future<FaceAuthMeResult> me(String token) async {
-    final response = await http.get(
-      _uri('auth/me'),
-      headers: {
-        'Accept': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
-    );
-    debugPrint('[FaceAuth] Paso 2 - auth/me: status=${response.statusCode}');
-    debugPrint('[FaceAuth] auth/me response: ${response.body}');
-    _handleResponse(response);
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
-    final idCliente = data['idCliente']?.toString() ?? data['id']?.toString() ?? '';
-    if (idCliente.isEmpty) {
-      throw const AuthException('No se recibió idCliente.');
-    }
-    final idUsuario = data['idUsuario'] is int ? data['idUsuario'] as int : null;
-    final isRoot = data['isRoot'] as bool?;
-    final rol = data['rol'] as String?;
-    return FaceAuthMeResult(
-      idCliente: idCliente,
-      idUsuario: idUsuario,
-      idSolucion: data['idSolucion'],
-      usuario: data['usuario'] as String?,
-      isRoot: isRoot,
-      rol: rol,
-    );
-  }
-
-  static final _contentTypeJpeg = MediaType('image', 'jpeg');
-
-  @override
-  Future<FaceAuthLivenessResult> livenessCheck(String token, List<int> image1, List<int> image2) async {
-    final request = http.MultipartRequest('POST', _uriLiveness('embed/liveness-check'));
-    request.headers['Authorization'] = 'Bearer $token';
+  Future<FaceAuthLivenessResult> livenessCheck(
+    String jwt,
+    List<int> image1,
+    List<int> image2,
+  ) async {
+    final request = http.MultipartRequest('POST', _uri(_pathLivenessCheck));
+    request.headers['Authorization'] = 'Bearer $jwt';
     request.headers['Accept'] = 'application/json';
     request.files.add(http.MultipartFile.fromBytes(
       'files',
       image1,
-      filename: 'capture_0.jpg',
+      filename: 'captura1.jpg',
       contentType: _contentTypeJpeg,
     ));
     request.files.add(http.MultipartFile.fromBytes(
       'files',
       image2,
-      filename: 'capture_1.jpg',
+      filename: 'captura2.jpg',
       contentType: _contentTypeJpeg,
     ));
-    final streamed = await request.send();
+
+    final streamed = await request.send().timeout(
+      _requestTimeout,
+      onTimeout: () => throw const NetworkException(
+        'La solicitud tardó demasiado. Intenta nuevamente.',
+        '408',
+      ),
+    );
     final response = await http.Response.fromStream(streamed);
-    debugPrint('[FaceAuth] Paso 4 - embed/liveness-check: status=${response.statusCode}');
-    debugPrint('[FaceAuth] liveness-check response body: ${response.body}');
-    _handleResponse(response);
+    debugPrint('[FaceAuth] POST $_pathLivenessCheck: status=${response.statusCode}');
+    debugPrint('[FaceAuth] liveness-check: ${response.body}');
+    _throwForStatus(response);
+
     final data = jsonDecode(response.body) as Map<String, dynamic>;
-    final passed = data['passed'] as bool? ?? false;
-    final reason = data['reason'] as String?;
-    final score = data['score'] as num?;
-    debugPrint('[FaceAuth] liveness-check: passed=$passed, reason=$reason, score=$score');
-    return FaceAuthLivenessResult(passed: passed, reason: reason, score: score);
+    return FaceAuthLivenessResult(
+      passed: data['passed'] as bool? ?? false,
+      reason: data['reason'] as String?,
+      score: data['score'] as num?,
+    );
   }
 
   @override
-  Future<List<double>> embed(String token, List<int> imageBytes) async {
-    final request = http.MultipartRequest('POST', _uri('embed'));
-    request.headers['Authorization'] = 'Bearer $token';
+  Future<List<double>> embed(String jwt, List<int> imageBytes) async {
+    final request = http.MultipartRequest('POST', _uri(_pathEmbed));
+    request.headers['Authorization'] = 'Bearer $jwt';
     request.headers['Accept'] = 'application/json';
     request.files.add(http.MultipartFile.fromBytes(
       'file',
@@ -196,11 +217,18 @@ class FaceAuthRemoteDatasourceImpl implements FaceAuthRemoteDatasource {
       filename: 'capture.jpg',
       contentType: _contentTypeJpeg,
     ));
-    final streamed = await request.send();
+
+    final streamed = await request.send().timeout(
+      _requestTimeout,
+      onTimeout: () => throw const NetworkException(
+        'La solicitud tardó demasiado. Intenta nuevamente.',
+        '408',
+      ),
+    );
     final response = await http.Response.fromStream(streamed);
-    debugPrint('[FaceAuth] Paso 5 - embed: status=${response.statusCode}');
-    debugPrint('[FaceAuth] embed response body (length=${response.body.length}): ${response.body.length > 500 ? '${response.body.substring(0, 500)}...' : response.body}');
-    _handleResponse(response);
+    debugPrint('[FaceAuth] POST $_pathEmbed: status=${response.statusCode}');
+    _throwForStatus(response);
+
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     final list = data['embedding'];
     if (list is! List) {
@@ -212,45 +240,80 @@ class FaceAuthRemoteDatasourceImpl implements FaceAuthRemoteDatasource {
   }
 
   @override
-  Future<FaceAuthValidateResult> validateFace(String token, String idCliente, List<double> embedding) async {
-    // API espera: { "embeddings": [ n1, n2, ..., n512 ] } — el arreglo 512D directo (InsightFace ArcFace de /embed)
-    if (embedding.length != 512) {
-      throw NetworkException('El embedding debe tener 512 elementos, se recibieron ${embedding.length}.');
+  Future<FaceAuthValidateSessionResult> validateFace(
+    List<double> embedding, {
+    double? latitud,
+    double? longitud,
+  }) async {
+    if (embedding.isEmpty) {
+      throw const AuthException('El embedding está vacío.', '400');
     }
-    final body = jsonEncode({'embeddings': embedding});
-    debugPrint('[FaceAuth] validateFace request body: embeddings (512 elementos), body length=${body.length} chars');
-    final response = await http.post(
-      _uri('auth/validateFace/$idCliente'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
-      body: body,
-    );
-    debugPrint('[FaceAuth] Paso 6 - auth/validateFace/$idCliente: status=${response.statusCode}');
-    debugPrint('[FaceAuth] validateFace response body: ${response.body}');
-    if (response.statusCode == 404) {
-      debugPrint('[FaceAuth] validateFace: 404 - Rostro no reconocido');
+    if (embedding.length != 512) {
+      debugPrint('[FaceAuth] Embedding length inválido: ${embedding.length}');
       throw AuthException(
-        _parseMessage(response.body) ?? 'Rostro no reconocido.',
-        '404',
+        'El embedding debe tener 512 elementos, se recibieron ${embedding.length}.',
+        '400',
       );
     }
-    _handleResponse(response);
+
+    final bodyMap = <String, dynamic>{'embeddings': embedding};
+    if (latitud != null) bodyMap['latitud'] = latitud;
+    if (longitud != null) bodyMap['longitud'] = longitud;
+
+    final response = await http
+        .post(
+          _uri(_pathValidateFace),
+          headers: const {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: jsonEncode(bodyMap),
+        )
+        .timeout(
+          _requestTimeout,
+          onTimeout: () => throw const NetworkException(
+            'La solicitud tardó demasiado. Intenta nuevamente.',
+            '408',
+          ),
+        );
+    debugPrint('[FaceAuth] POST $_pathValidateFace: status=${response.statusCode}');
+    debugPrint('[FaceAuth] validateFace: ${response.body}');
+    _throwForStatus(response);
+
     final data = jsonDecode(response.body) as Map<String, dynamic>;
-    final success = data['success'] as bool? ?? true;
-    final nombre = data['nombre'] as String? ?? '';
-    final paterno = data['paterno'] as String?;
-    final materno = data['materno'] as String?;
-    final distancia = data['distancia'] as num?;
-    debugPrint('[FaceAuth] validateFace: success=$success, nombre=$nombre, paterno=$paterno, materno=$materno, distancia=$distancia');
-    return FaceAuthValidateResult(
-      success: success,
-      nombre: nombre,
-      paterno: paterno,
-      materno: materno,
-      distancia: distancia,
+    final tokens = LoginTokensResponse.fromJson(data);
+    if (tokens.token.isEmpty) {
+      throw const AuthException('No se recibió token de sesión.');
+    }
+    return FaceAuthValidateSessionResult(
+      token: tokens.token,
+      refreshToken: tokens.refreshToken,
+      expiresIn: tokens.expiresIn,
     );
+  }
+
+  @override
+  Future<UserModel> fetchLoginMe(String sessionToken) async {
+    final response = await http
+        .get(
+          _uri(_pathLoginMe),
+          headers: {
+            'Accept': 'application/json',
+            'Authorization': 'Bearer $sessionToken',
+          },
+        )
+        .timeout(
+          _requestTimeout,
+          onTimeout: () => throw const NetworkException(
+            'La solicitud tardó demasiado. Intenta nuevamente.',
+            '408',
+          ),
+        );
+    debugPrint('[FaceAuth] GET $_pathLoginMe: status=${response.statusCode}');
+    _throwForStatus(response);
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final me = LoginMeResponse.fromJson(data);
+    return me.toUserModel(fallbackEmail: me.email ?? me.userName ?? '');
   }
 }

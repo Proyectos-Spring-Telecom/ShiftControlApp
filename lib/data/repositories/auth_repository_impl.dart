@@ -50,7 +50,12 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
-  Future<void> saveSession(UserEntity user, String token, {String? refreshToken}) async {
+  Future<void> saveSession(
+    UserEntity user,
+    String token, {
+    String? refreshToken,
+    int? expiresIn,
+  }) async {
     final model = user is UserModel
         ? user
         : UserModel(
@@ -64,7 +69,12 @@ class AuthRepositoryImpl implements AuthRepository {
             userName: user.userName,
             fotoPerfil: user.fotoPerfil,
           );
-    await _local.saveSession(model, token, refreshToken: refreshToken);
+    await _local.saveSession(
+      model,
+      token,
+      refreshToken: refreshToken,
+      expiresIn: expiresIn,
+    );
   }
 
   @override

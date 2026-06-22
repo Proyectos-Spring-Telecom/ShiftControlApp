@@ -2,9 +2,11 @@
 
 ## 1.1 Descripción general
 
-**Turnos Spring** es una aplicación Flutter multiplataforma (Android, iOS, Web) para el control de turnos operativos. Permite autenticación (login con correo/contraseña y NIP, con soporte de **refresh token** para renovar el access token automáticamente), flujos de apertura y cierre de turno (checklist, fotos de resguardo/tablero, odómetro, combustible, daños, reporte de incidentes) y gestión de perfil y apariencia.
+**Turnos Spring** es una aplicación Flutter multiplataforma (Android, iOS, Web) para el control de turnos operativos. Permite autenticación (login con correo/contraseña, NIP y reconocimiento facial), flujos de apertura y cierre de turno (checklist, fotos de resguardo/tablero, odómetro, combustible, daños, reporte de incidentes), consulta de historial y detalle de turnos, envío de reportes por correo, y gestión de perfil y apariencia.
 
-La solución sigue una **arquitectura en capas** (data / domain / presentation) con **Riverpod** para inyección de dependencias y estado, **Navigator 1.0** para rutas, y una separación clara entre fuentes de datos, repositorios, casos de uso y UI.
+Toda la comunicación con el backend se realiza contra el **BFF ShiftControl** (`AppEnvironmentConfig.baseUrl`). No hay URLs separadas para BehaviorIQ ni hosts legacy (`spcode.ddns.net`, `faceauth.ddns.net`).
+
+La solución sigue una **arquitectura en capas** (data / domain / presentation) con **Riverpod** para inyección de dependencias y estado, **Navigator 1.0** para rutas, y una separación clara entre fuentes de datos, repositorios, casos de uso, servicios de features y UI.
 
 ---
 
@@ -15,9 +17,11 @@ La solución sigue una **arquitectura en capas** (data / domain / presentation) 
 | Framework | Flutter (Dart) |
 | Estado / DI | Riverpod (Provider, StateNotifierProvider) |
 | Navegación | Navigator 1.0 + MaterialApp.onGenerateRoute |
-| Red | package:http → ApiClient (HttpApiClient) |
-| Persistencia local | SharedPreferences (sesión de auth) |
-| Temas | Material 3 (AppTheme light/dark, ThemeController) |
+| Red | `package:http` → `ApiClient` (`HttpApiClient`) y llamadas HTTP directas para multipart |
+| Persistencia local | SharedPreferences (sesión, checklist, tema) |
+| Ubicación | `geolocator` (Face Auth, apertura/cierre de turno) |
+| Cámara / imágenes | `camera`, `image_picker`, `image` |
+| Temas | Material 3 (`AppTheme` light/dark, `ThemeController`) |
 | Plataformas | Android, iOS, Web (hash routing para deep links) |
 
 ---
@@ -28,34 +32,35 @@ La solución sigue una **arquitectura en capas** (data / domain / presentation) 
 lib/
 ├── config/                 # Ambiente (baseUrl DEV/QA/PROD)
 ├── core/
-│   ├── auth/               # TokenStorageService (token + refreshToken), RefreshTokenRunner (POST /api/auth/refresh sin ApiClient)
-│   ├── constants/          # Rutas, constantes de app (keyAuthToken, keyRefreshToken, etc.)
-│   ├── errors/             # AppException, AuthException, NetworkException
-│   ├── network/            # ApiClient (contrato), HttpApiClient (impl con refresh y reintento 401/403)
+│   ├── auth/               # TokenStorageService, RefreshTokenRunner (POST /api/login/refresh)
+│   ├── constants/          # Rutas, keys SharedPreferences
+│   ├── errors/             # AppException, AuthException, NetworkException, StorageException
+│   ├── network/            # ApiClient, HttpApiClient (refresh + reintento 401/403)
 │   ├── theme/              # AppTheme, colores
-│   └── utils/              # Validadores, initial route (web/stub), read file bytes (io/stub), date_format_utils (fecha/hora en español)
+│   └── utils/              # Validadores, initial route (web/stub), read file bytes, date_format_utils
 ├── data/
 │   ├── datasources/
-│   │   ├── local/          # AuthLocalDatasource (SharedPreferences)
-│   │   └── remote/         # AuthRemoteDatasource; FaceAuthRemoteDatasource; PlateReadRemoteDatasource (POST /plate/read); PlacasValidarRemoteDatasource (GET /placas/validar)
-│   ├── models/             # DTOs (LoginRequest, LoginResponse, UserModel, etc.)
-│   └── repositories/      # AuthRepositoryImpl
+│   │   ├── local/          # AuthLocalDatasource
+│   │   └── remote/         # Auth, FaceAuth, PlateRead, PlacasValidar, Reportes
+│   ├── models/             # DTOs (UserModel, LoginTokensResponse, LoginMeResponse, etc.)
+│   └── repositories/       # AuthRepositoryImpl, ReportesRepositoryImpl
 ├── domain/
-│   ├── entities/          # UserEntity
-│   ├── repositories/      # AuthRepository (contrato)
-│   └── usecases/          # Login, Logout, GetCurrentUser, CheckAuth
+│   ├── entities/           # UserEntity
+│   ├── repositories/       # AuthRepository, ReportesRepository
+│   └── usecases/           # Login, Logout, GetCurrentUser, CheckAuth
 ├── features/
-│   ├── auth/               # AuthService (login NIP), modelos NIP
-│   └── profile/            # ProfileService, modelos cambio contraseña/NIP
+│   ├── auth/               # AuthService (login NIP), FaceAuthService
+│   ├── profile/            # ProfileService (contraseña, NIP)
+│   └── turnos/             # TurnosService, ChecklistProgressService
 ├── presentation/
-│   ├── controllers/       # AuthController, ThemeController
-│   ├── auth/               # Login, recuperar contraseña, nueva contraseña, perfil, face_auth (captura, flujo)
+│   ├── controllers/        # AuthController, ThemeController
+│   ├── auth/               # Login, recuperar/nueva contraseña, perfil, face_auth
 │   ├── home/               # MainShell, Drawer, bottom nav, tabs
-│   ├── turnos/             # Control turnos, inicio/cierre, odómetro, combustible, daños, incidentes; identificar_placa (PlateRead), placa_validada_provider (estado global vehículo), plate_image_crop
+│   ├── turnos/             # Control, checklist apertura/cierre, historial, detalle, placa, incidentes
 │   ├── settings/           # Apariencia
-│   ├── widgets/            # AppAlertBanner, LoadingOverlay, etc.
-│   └── app_router.dart     # Rutas estáticas (login, home, nueva-contrasena)
-└── main.dart               # Bootstrap, initialRoute desde hash (web), ProviderScope
+│   ├── widgets/            # AppAlertBanner, LoadingOverlay, ExpandableNetworkImage, etc.
+│   └── app_router.dart
+└── main.dart
 ```
 
 ---
@@ -63,44 +68,150 @@ lib/
 ## 1.4 Flujos principales
 
 ### Autenticación
-- **Login correo/contraseña:** UI → AuthController.login → LoginUseCase → AuthRepository → AuthRemoteDatasource (POST /api/login) + AuthLocalDatasource.saveSession (token y opcional refreshToken si el backend los envía). Tokens se persisten vía **TokenStorageService**.
-- **Login NIP:** AuthController.loginWithNip → AuthService (POST /api/login/operador/accesso/nip) + saveSession (token y opcional refreshToken).
-- **Refresh token:** Si una request devuelve 401 o 403, **HttpApiClient** intenta renovar el token llamando a **RefreshTokenRunner** (POST /api/auth/refresh con refreshToken; no usa ApiClient para evitar ciclos). Si el refresh tiene éxito, se guardan los nuevos token y refreshToken y se **reintenta la request original**. Si el refresh falla (p. ej. 401/403), se llama a **onSessionExpired** (incrementa `sessionExpiredTriggerProvider`), el listener en la app ejecuta logout y se redirige al login. Solo se permite un refresh en vuelo (Completer) para evitar múltiples renovaciones simultáneas. Ver docs 14.
-- **Login Face Auth:** Botón "Reconocimiento facial" en LoginPage → FaceAuthFlowPage. Flujo: FaceAuthService.loginAndGetIdCliente (POST auth/login, GET auth/me) → FaceAuthCapturePage (dos capturas en misma pantalla: "Mantenga la posición al frente" + 2 s, "Gira un poco el rostro..." + 2 s) → liveness-check (POST embed/liveness-check, 2 imágenes) → embed (POST /embed, 2ª imagen → 512D) → validateFace (POST auth/validateFace/{idCliente}, body `embeddings` 512 números). Éxito: AuthController.setSessionFromFaceAuth → Home. Fallo liveness/404: pantallas de reintento y "Volver al login". API Face Auth: `AppEnvironmentConfig.faceAuthBaseUrl` y opcional `faceAuthLivenessBaseUrl` (solo liveness). UI de captura: óvalo verde con efecto over; sin cuenta regresiva visible (plan 09). **UI actual:** mensajes claros de éxito/error; en fallo de verificación pantalla "No pudimos verificar tu rostro" con opciones reintentar/volver al login; sin banner duplicado; estados de carga "Verificando tu identidad" y "Analizando..." durante liveness/embed/validateFace. Ver docs 06, 07, 08, 09.
-- **Recuperar acceso:** RecuperarContrasenaPage → AuthController.recuperarAcceso → AuthRepository.recuperarAcceso → POST /api/login/usuario/solicitud/recuperacion → banner + pushNamedAndRemoveUntil(login).
-- **Cambiar contraseña desde link:** NuevaContrasenaPage (token en URL) → AuthController.cambiarContrasenaDesdeRecuperacion → AuthRepository → POST /api/login/cambiar/accesso con header Authorization: Bearer {token} → banner + navegación a login.
-- **Cierre de sesión:** AuthController.logout → LogoutUseCase → AuthRepository.logout → AuthLocalDatasource.clearSession (que llama a TokenStorageService.clearTokens y limpia datos de usuario).
+
+#### Login correo/contraseña (2 pasos)
+- **UI:** `LoginPage` → `AuthController.login`
+- **API:**
+  1. `POST /api/login` → `token`, `refreshToken`, `expiresIn`
+  2. `GET /api/login/me` (Bearer) → datos del usuario
+- **Persistencia:** `AuthRepository.saveSession` → `TokenStorageService` + SharedPreferences
+
+#### Login NIP
+- **UI:** `LoginPage` (modo NIP; requiere correo previo en `getLastLoginEmail`)
+- **API:** `POST /api/login/operador/accesso/nip` → tokens → `GET /api/login/me`
+- **Servicio:** `AuthService.loginWithNip`
+
+#### Refresh token
+- Ante **401/403**, `HttpApiClient` llama a `RefreshTokenRunner` → `POST /api/login/refresh` (HTTP directo, sin `ApiClient`)
+- Si el refresh tiene éxito: guarda nuevos tokens y reintenta la petición original
+- Si falla: `sessionExpiredTriggerProvider` → logout automático en `main.dart`
+- Mutex (`Completer`) para un solo refresh en vuelo
+
+#### Logout
+- **UI:** `ProfilePage`, `AppDrawer`, etc.
+- **Flujo:** `AuthController.logout` → `POST /api/login/logout` (Bearer, optimista) → `clearSession` local siempre
+
+#### Recuperar acceso
+- `RecuperarContrasenaPage` → `POST /api/login/usuario/solicitud/recuperacion` → banner + navegación a login
+
+#### Cambiar contraseña
+| Contexto | Pantalla | Endpoint |
+|----------|----------|----------|
+| Link de recuperación | `NuevaContrasenaPage` (`?token=`) | `POST /api/login/cambiar/accesso` + Bearer token URL |
+| Perfil (logueado) | `CambiarContrasenaPage` | `PATCH /api/login/cambiar/accesso` → logout tras éxito |
+
+#### Perfil — NIP
+- `CrearNipPage` → `PATCH /api/login/mi-nip` con `{ pinHash }` (6 u 8 dígitos; validaciones locales de seguridad)
+
+#### Login Face Auth (reconocimiento facial)
+- **Entrada:** botón "Reconocimiento facial" en `LoginPage` → `FaceAuthFlowPage` (push, no ruta nombrada)
+- **Captura:** `FaceAuthCapturePage` — cámara frontal, óvalo, 2 capturas automáticas (2 s entre ellas) → `[captura1, captura2]`
+- **Pipeline API (ShiftControl BFF):**
+  1. `POST /api/login?Nombres=SIT` — JWT de servicio interno para liveness/embed (en datasource, invisible al usuario)
+  2. `POST /api/embed/liveness-check` — multipart `files` ×2 (captura1 + captura2), Bearer JWT servicio
+  3. `POST /api/embed` — multipart `file` = **solo captura2** → embedding 512D (generado en backend, no en Flutter)
+  4. `POST /api/auth/validateFace` — body `{ embeddings, latitud?, longitud? }` → `token`, `refreshToken`, `expiresIn`
+  5. `GET /api/login/me` — Bearer token de validateFace → `UserModel`
+- **Sesión:** `authRepository.saveSession` + `AuthController.checkAuth` → Home
+- **Embedding:** la app **no** calcula vectores localmente; solo envía JPEG de captura2 y parsea `response.embedding`
+- **Errores:** cualquier fallo (liveness `passed: false`, embedding inválido, HTTP 4xx/5xx, red, timeout) → `AppAlertBanner` + `pushNamedAndRemoveUntil(login)`
+- **UX preservada:** pantalla "Verificando tu identidad" / "Analizando...."; mensaje de éxito "Iniciaste sesión con reconocimiento facial."
 
 ### Ruta inicial (Web)
-- En web, la ruta inicial se resuelve desde el hash (#/nueva-contrasena?token=...).
-- Se intenta primero `Uri.base.fragment`; si viene vacío (típico en release), se usa un helper que lee `window.location.hash` (import condicional dart.library.html).
-- Si la ruta es `RouteConstants.nuevaContrasena`, se pasa como `initialRoute` a MaterialApp para mostrar NuevaContrasenaPage sin pasar por login.
+- Hash `#/nueva-contrasena?token=...` resuelto en `main.dart` vía `getInitialRouteFromHash()`
+- `AppRouter` normaliza path y query para `NuevaContrasenaPage`
 
-### Turnos
-- Flujo de **inicio/cierre de turno**: selección de vehículo, foto de resguardo (cierre), foto de tablero, captura de odómetro, registro de combustible, niveles de fluido, accesorios, luces, daños, reporte de incidentes, documentación, resumen.
-- **Validación de placa:** Tras identificar la placa en Inicio de Turno (IdentificarPlacaPage → POST /plate/read con PlateReadRemoteDatasource), se llama a **GET /placas/validar** (API BehaviorIQ) con `numeroPlaca`, `idCliente` e `idSolucion`. Estos últimos se obtienen con **GET /auth/me** (FaceAuthRemoteDatasource.me(token)) usando el token de sesión actual. El resultado se guarda en el **provider global** `placaValidadaProvider` (`StateProvider<PlacasValidarResult?>`), de modo que cualquier pantalla pueda usar los datos del vehículo (placa, marca, modelo, año, económico). Ver docs 12.
-- **Inicio de Turno (UI):** Sin card "Asignación Requerida". Card de vehículo/operador unida (selector de vehículo con input de placa; subtítulo "Placa registrada" cuando la placa está validada). Header muestra solo **Folio: Pendiente**, **Fecha** y **Lugar** (no placa, marca, modelo, año ni económico en el header). Botón **Continuar** habilitado solo cuando la placa está registrada (`placaValidadaProvider` con `registered == true`). En **Cierre de Turno** no se abre cámara de placa: los datos del vehículo se toman de `placaValidadaProvider`; el texto del info box en Cierre es específico ("fotografía de resguardo...", distinto al de Apertura).
-- **Apertura de Turno (Captura de odómetro):** Primera card con datos del vehículo en orden: **Placa**, **Económico**, **Año**, **Marca/Modelo** (sin hora). Pill de placa alineado. Datos desde `placaValidadaProvider`.
-- **Resumen de Turno:** Card "Información General" con datos del vehículo desde `placaValidadaProvider` y datos del operador desde `authControllerProvider`.
-- **Control de Turnos:** Card "Estado Actual" con datos del vehículo desde `placaValidadaProvider`.
-- Las **fotos capturadas** se guardan en memoria como `Uint8List` y se muestran con `Image.memory` para compatibilidad con web (evitar `Image.file`).
+### Turnos — control y checklist
+
+**Hub:** `ControlTurnosPage` consulta `GET /api/turnos/mi-turno` (`miTurnoActivoProvider`).
+
+**Checklist apertura (9 pasos):** Inicio → Odómetro → Daños → Testigos → Fluidos → Luces → Accesorios → Documentación → Resumen.
+
+**Checklist cierre (9 pasos):** rutas paralelas `/cierre-*`.
+
+**APIs principales (`TurnosService`):**
+
+| Acción | Endpoint |
+|--------|----------|
+| Crear turno (apertura) | `POST /api/turnos` (multipart: placa, lat, lng, evidencia) |
+| Cierre geográfico | `PATCH /api/turnos` (multipart) |
+| Cerrar bitácora | `PATCH /api/turnos/bitacora/cierre` |
+| Odómetro | `POST /api/turnos/tablero` |
+| Daños | `POST /api/turnos/inspeccion-vehiculo-ex` |
+| Testigos | `POST /api/turnos/testigos` |
+| Fluidos | `POST /api/turnos/niveles-fluidos` |
+| Luces | `POST /api/turnos/luces-vehiculo` |
+| Accesorios | `POST /api/turnos/accesorios-vehiculo` |
+| Documentación | `POST /api/turnos/documentacion-vehiculo` |
+| Resumen bitácora | `GET /api/bitacora-vehicular/informacion-general` |
+| Combustible | `POST /api/turnos/incidencias/gasolina` |
+| Incidente/accidente | `POST /api/turnos/incidencias/accidente` + `GET /api/ubicacion/reverse` |
+
+**Progreso local:** `ChecklistProgressService` en SharedPreferences.
+
+### Placa y vehículo (Inicio de Turno)
+- **OCR placa:** `IdentificarPlacaPage` → `POST /api/plate/read` (`PlateReadRemoteDatasource`)
+- **Validar placa:** `GET /api/placas/validar?numeroPlaca=...` (`PlacasValidarRemoteDatasource`)
+- **Estado global:** `placaValidadaProvider` (`StateProvider<PlacasValidarResult?>`)
+- **UI:** header con Folio/Fecha/Lugar; Continuar habilitado solo con `registered == true`; datos de vehículo en CapturaOdometro, Resumen, Control de Turnos
+
+### Historial de turnos
+- **Pantalla:** `HistorialTurnosPage` (tab Historial en `MainShell`)
+- **API:** `GET /api/turnos/list?fechaDesde=&fechaHasta=` (scroll infinito día a día, máx. 30 días)
+- Filtro de búsqueda local y selector de rango de fechas
+
+### Detalle de turno
+- **Pantalla:** `DetalleTurnoPage` — navegación desde historial con `idTurno`
+- **API:** `GET /api/turnos/{id}` (`turnoDetalleProvider`)
+- Muestra datos, evidencias, bitácoras, incidencias (orden: fecha → tipo → descripción → evidencias)
+- **Imágenes remotas:** `ExpandableNetworkImage` con indicador de carga
+- Mensaje de fin de detalle al final del listado
+
+### Compartir reporte por correo
+- **UI:** sheet en `DetalleTurnoPage` (`compartir_reporte_sheets.dart`)
+- **API:** `POST /api/reportes/turno/{id}/enviar` — body `{ destinatario, asunto? }`
+- Cadena: `ReportesService` → `ReportesRepository` → `ReportesRemoteDatasource`
+
+### Apariencia
+- `AppearancePage` — tema claro / oscuro / sistema (`themeModePreferenceProvider`)
 
 ---
 
 ## 1.5 Decisiones de diseño
 
-- **Contratos por capa:** Las capas se comunican por interfaces (ApiClient, AuthRepository, AuthRemoteDatasource, AuthLocalDatasource, TokenStorageService). La implementación concreta se inyecta vía Riverpod.
-- **Tokens centralizados:** **TokenStorageService** es la única interfaz para leer/escribir access token y refresh token (SharedPreferences). No se accede a las claves de tokens desde otras partes del código. AuthLocalDatasource delega en TokenStorageService para token/refreshToken; logout limpia vía clearTokens().
-- **Refresh token y reintento:** HttpApiClient recibe `getToken`, `refreshToken` (callback) y `onSessionExpired`. Paths que contienen `login` o `refresh` no llevan Authorization. Ante 401/403 en una request protegida se intenta un solo refresh (RefreshTokenRunner con http directo); si tiene éxito se reintenta la request; si falla se dispara logout automático.
-- **Errores controlados:** Se usan `AppException` y subclases (`AuthException`, `NetworkException`, `StorageException`). El cliente HTTP mapea códigos 4xx/5xx a estas excepciones; la UI muestra mensajes vía `AppAlertBanner`.
-- **Sin lógica de red en UI ni en controllers de negocio:** Los controllers orquestan (validan, llaman repos/servicios, muestran banners y navegación); la red está en datasources/servicios.
-- **Web:** Deep links por hash; visualización de fotos con bytes (`Image.memory`); lectura del hash con import condicional; overlay del banner usa el contexto del overlay para `MediaQuery` y evitar null tras navegación.
-- **Ambiente:** Un solo punto de configuración (`config/app_environment.dart`): `current` (dev/qa/prod), `AppEnvironmentConfig.baseUrl` para el ApiClient principal, `faceAuthBaseUrl` y opcional `faceAuthLivenessBaseUrl` para Face Auth (cliente HTTP propio en FaceAuthRemoteDatasource).
+- **Un solo BFF:** `AppEnvironmentConfig.baseUrl` para login, turnos, placas, face auth, reportes y perfil. Face Auth usa `package:http` directo en `FaceAuthRemoteDatasource` (multipart y JWT de servicio).
+- **Login en 2 pasos:** tokens en `POST /api/login`; perfil en `GET /api/login/me`.
+- **Tokens centralizados:** `TokenStorageService` (access, refresh, `expiresIn`/`expiresAt`). `AuthLocalDatasource` delega en él.
+- **Refresh reactivo:** renovación ante 401/403, no proactiva por timer.
+- **Logout optimista:** siempre limpia sesión local aunque falle el servidor.
+- **Face Auth sin IA local:** embedding generado exclusivamente por `POST /api/embed` con captura2.
+- **Errores controlados:** `AppException` y subclases; UI con `AppAlertBanner`.
+- **Sin lógica de red en UI:** controllers orquestan; red en datasources/servicios.
+- **Web:** deep links por hash; fotos con `Image.memory` / bytes; banner con contexto de overlay.
+- **Fotos en checklist:** `Uint8List` en memoria para compatibilidad web.
 
 ---
 
 ## 1.6 Convenciones
 
-- **Nombres de rutas:** Centralizados en `RouteConstants`; rutas con query (ej. token) se construyen con helpers (ej. `nuevaContrasenaWithToken(token)`).
-- **AppRouter:** Recibe `RouteSettings.name` que puede incluir query; se normaliza el path para el switch y se extrae el token para NuevaContrasenaPage.
-- **Debug:** Se usa `debugPrint` en datasources, controller y puntos críticos (resolución de ruta, éxito/error de recuperación y cambio de contraseña).
+- **Rutas:** `RouteConstants` (`/login`, `/home`, `/nueva-contrasena`)
+- **AppRouter:** normaliza `settings.name` con query params
+- **Providers Riverpod:** definidos en `auth_controller.dart`, `mi_turno_provider.dart`, `reportes_provider.dart`, etc.
+- **Debug:** `debugPrint` en datasources y puntos críticos de auth/turnos
+- **Ambiente:** cambiar `current` en `app_environment.dart` (dev / qa / prod)
+
+---
+
+## 1.7 Mapa de endpoints del BFF
+
+```
+Auth:     POST /api/login, GET /api/login/me, POST /api/login/refresh
+          POST /api/login/logout, POST /api/login/operador/accesso/nip
+          POST /api/login/usuario/solicitud/recuperacion
+          POST|PATCH /api/login/cambiar/accesso, PATCH /api/login/mi-nip
+Face:     POST /api/embed/liveness-check, POST /api/embed, POST /api/auth/validateFace
+Turnos:   /api/turnos/*, /api/bitacora-vehicular/informacion-general
+          /api/ubicacion/reverse, /api/turnos/incidencias/*
+Placas:   POST /api/plate/read, GET /api/placas/validar
+Reportes: POST /api/reportes/turno/{id}/enviar
+```

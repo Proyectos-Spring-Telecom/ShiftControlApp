@@ -1,6 +1,6 @@
 # 2. Contratos por capas y módulos
 
-Este documento define los contratos (interfaces, firmas y convenciones) que deben cumplir las distintas capas y módulos de la aplicación.
+Este documento define los contratos (interfaces, firmas y convenciones) que deben cumplir las distintas capas y módulos de la aplicación, alineados con la implementación actual contra el **BFF ShiftControl**.
 
 ---
 
@@ -14,13 +14,13 @@ Contrato del cliente HTTP. Las respuestas 2xx se consideran éxito; en 4xx/5xx l
 
 | Método | Firma | Notas |
 |--------|--------|--------|
-| get | `Future<Map<String, dynamic>> get(String path, {Map<String, String>? headers})` | Cuerpo vacío → `{}`. Errores vía excepción. |
-| post | `Future<Map<String, dynamic>> post(String path, {dynamic body, Map<String, String>? headers})` | Body típicamente `Map`; se serializa a JSON. |
+| get | `Future<Map<String, dynamic>> get(String path, {Map<String, String>? headers})` | Cuerpo vacío → `{}`. |
+| post | `Future<Map<String, dynamic>> post(String path, {dynamic body, Map<String, String>? headers})` | Body típicamente `Map`; JSON. |
 | put | `Future<Map<String, dynamic>> put(String path, {dynamic body, Map<String, String>? headers})` | Idem. |
 | patch | `Future<Map<String, dynamic>> patch(String path, {dynamic body, Map<String, String>? headers})` | Idem. |
 | delete | `Future<Map<String, dynamic>> delete(String path, {Map<String, String>? headers})` | Idem. |
 
-**Implementación:** `HttpApiClient` usa `AppEnvironmentConfig.baseUrl`, headers `Content-Type`/`Accept` JSON. Recibe: `getToken` (callback para obtener el access token), `refreshToken` (callback `Future<String?> Function()` para renovar token) y `onSessionExpired` (callback void). En paths que contienen `"login"` o `"refresh"` no se envía Authorization. Ante 401 o 403 en una request protegida, se intenta una vez `refreshToken()`; si retorna un token se reintenta la request original; si falla o lanza se llama `onSessionExpired()` y se lanza. Solo un refresh en vuelo (Completer) para evitar bucles. Ver **14-plan-refresh-token-implementacion.md**.
+**Implementación:** `HttpApiClient` usa `AppEnvironmentConfig.baseUrl`. Recibe `getToken`, `refreshToken` y `onSessionExpired`. En paths que contienen `"login"` o `"refresh"` no se envía `Authorization` automático (salvo que se pase explícitamente en `headers`). Ante 401/403 intenta un refresh; si falla llama `onSessionExpired()`.
 
 ---
 
@@ -31,11 +31,9 @@ Contrato del cliente HTTP. Las respuestas 2xx se consideran éxito; en 4xx/5xx l
 | Tipo | Uso |
 |------|-----|
 | `AppException` (sealed) | Base: `message`, `code` opcional. |
-| `AuthException` | Credenciales, token, 401, 400. |
-| `NetworkException` | Errores de red, 404, 500, etc. |
+| `AuthException` | Credenciales, token, 401, 400, liveness fallido. |
+| `NetworkException` | Errores de red, 404, 500, 503, timeout. |
 | `StorageException` | Fallos de persistencia local. |
-
-Ningún contrato devuelve códigos HTTP; la capa de datos traduce a estas excepciones.
 
 ---
 
@@ -51,8 +49,6 @@ Ningún contrato devuelve códigos HTTP; la capa de datos traduce a estas excepc
 | `nuevaContrasena` | `'/nueva-contrasena'` |
 | `nuevaContrasenaWithToken(String token)` | `'/nueva-contrasena?token=' + Uri.encodeComponent(token)` |
 
-Las rutas se usan en `MaterialApp.initialRoute`, `Navigator.pushNamed`/`pushNamedAndRemoveUntil` y en `AppRouter.onGenerateRouteStatic` (el `name` puede incluir query; el router normaliza por path).
-
 ---
 
 ### 2.1.4 AppEnvironmentConfig
@@ -63,11 +59,9 @@ Las rutas se usan en `MaterialApp.initialRoute`, `Navigator.pushNamed`/`pushName
 |----------|----------|
 | `AppEnvironment` | enum: `dev`, `qa`, `prod`. |
 | `current` | Variable global que fija el ambiente activo. |
-| `AppEnvironmentConfig.baseUrl` | getter `String`: URL base del API (puede incluir barra final). Para `qa` se concatena el segmento `/qa` según implementación. |
-| `AppEnvironmentConfig.faceAuthBaseUrl` | `String`: URL base del API Face Auth (BehaviorIQ). Usada por FaceAuthRemoteDatasource para login, auth/me, embed, validateFace. |
-| `AppEnvironmentConfig.faceAuthLivenessBaseUrl` | `String?`: URL opcional solo para POST `/embed/liveness-check`. Si no null, se usa en lugar de faceAuthBaseUrl para esa llamada. |
+| `AppEnvironmentConfig.baseUrl` | getter `String`: URL base del BFF ShiftControl. QA concatena segmento `/qa`. |
 
-El `ApiClient` (HttpApiClient) usa `baseUrl` para las peticiones principales. Face Auth usa su propio cliente HTTP en `FaceAuthRemoteDatasource` con `faceAuthBaseUrl` y, si aplica, `faceAuthLivenessBaseUrl`.
+**Nota:** No existen `faceAuthBaseUrl` ni URLs BehaviorIQ. Todos los datasources remotos (auth vía ApiClient, face auth, placas, plate read) usan `baseUrl`.
 
 ---
 
@@ -75,7 +69,7 @@ El `ApiClient` (HttpApiClient) usa `baseUrl` para las peticiones principales. Fa
 
 **Ubicación:** `lib/core/constants/app_constants.dart`
 
-Claves de persistencia (SharedPreferences) para sesión y tema. Contrato: nombres de keys estables para `TokenStorageService`, `AuthLocalDatasource` y `ThemeController`: `keyAuthToken`, `keyRefreshToken`, `keyUserId`, `keyThemeMode`, etc.
+Claves de persistencia estables: `keyAuthToken`, `keyRefreshToken`, `keyTokenExpiresIn`, `keyTokenExpiresAt`, datos de usuario, checklist, tema, etc.
 
 ---
 
@@ -83,17 +77,16 @@ Claves de persistencia (SharedPreferences) para sesión y tema. Contrato: nombre
 
 **Ubicación:** `lib/core/auth/token_storage_service.dart`
 
-Servicio central para almacenamiento de access token y refresh token. No se accede a SharedPreferences para tokens desde otras partes del código.
-
 | Método | Firma | Contrato |
 |--------|--------|----------|
-| saveToken | `Future<void> saveToken(String token)` | Persiste access token. Lanza `StorageException` si falla. |
-| getToken | `Future<String?> getToken()` | Devuelve access token o null. |
+| saveToken | `Future<void> saveToken(String token)` | Persiste access token. |
+| getToken | `Future<String?> getToken()` | Access token o null. |
 | saveRefreshToken | `Future<void> saveRefreshToken(String refreshToken)` | Persiste refresh token. |
-| getRefreshToken | `Future<String?> getRefreshToken()` | Devuelve refresh token o null. |
-| clearTokens | `Future<void> clearTokens()` | Borra token y refreshToken. |
-
-**Implementación:** `TokenStorageServiceImpl(SharedPreferences)` usa `AppConstants.keyAuthToken` y `keyRefreshToken`.
+| getRefreshToken | `Future<String?> getRefreshToken()` | Refresh token o null. |
+| saveTokenExpiry | `Future<void> saveTokenExpiry({int? expiresInSeconds})` | Guarda `expiresIn` y calcula `expiresAt`. |
+| getTokenExpiresIn | `Future<int?> getTokenExpiresIn()` | Segundos de validez guardados. |
+| getTokenExpiresAt | `Future<int?> getTokenExpiresAt()` | Epoch de expiración. |
+| clearTokens | `Future<void> clearTokens()` | Borra token, refresh y expiración. |
 
 ---
 
@@ -101,11 +94,9 @@ Servicio central para almacenamiento de access token y refresh token. No se acce
 
 **Ubicación:** `lib/core/auth/refresh_token_runner.dart`
 
-Ejecuta POST /api/auth/refresh usando `package:http` directo (no ApiClient) para evitar ciclos cuando el cliente recibe 401. Depende de `TokenStorageService` y de la baseUrl.
-
 | Método | Firma | Contrato |
 |--------|--------|----------|
-| run | `Future<String?> run()` | Obtiene refreshToken de TokenStorageService; POST body `{ "refreshToken": "..." }`; si 200 guarda nuevo token y refreshToken y retorna el token; si 401/403 lanza `AuthException`; en otro error retorna null. No imprime tokens completos en logs. |
+| run | `Future<String?> run()` | `POST /api/login/refresh` con `http` directo. Body `{ refreshToken }`. Si 200 guarda token, refreshToken y expiresIn; retorna access token. 401/403 → `AuthException`. |
 
 ---
 
@@ -115,30 +106,37 @@ Ejecuta POST /api/auth/refresh usando `package:http` directo (no ApiClient) para
 
 **Ubicación:** `lib/domain/repositories/auth_repository.dart`
 
-Interfaz del repositorio de autenticación. Retorna entidades de dominio o tipos simples; no expone DTOs ni detalles de red/almacenamiento.
+| Método | Firma | Comportamiento |
+|--------|--------|----------------|
+| login | `Future<UserEntity?> login(String email, String password)` | Login 2 pasos; persiste sesión. |
+| logout | `Future<void> logout()` | Logout remoto optimista + clear local. |
+| getCurrentUser | `Future<UserEntity?> getCurrentUser()` | Usuario almacenado o null. |
+| isLoggedIn | `Future<bool> isLoggedIn()` | Hay sesión válida. |
+| saveSession | `Future<void> saveSession(UserEntity user, String token, {String? refreshToken, int? expiresIn})` | Persiste sesión sin llamar API (Face Auth, etc.). |
+| recuperarAcceso | `Future<void> recuperarAcceso(String userName)` | Correo de recuperación. |
+| cambiarContrasenaDesdeRecuperacion | `Future<void> cambiarContrasenaDesdeRecuperacion({...})` | Cambio con token de URL. |
+
+---
+
+### 2.2.2 ReportesRepository
+
+**Ubicación:** `lib/domain/repositories/reportes_repository.dart`
 
 | Método | Firma | Comportamiento |
 |--------|--------|----------------|
-| login | `Future<UserEntity?> login(String email, String password)` | Login; persiste sesión internamente. Lanza `AppException` en error. |
-| logout | `Future<void> logout()` | Borra sesión local. |
-| getCurrentUser | `Future<UserEntity?> getCurrentUser()` | Usuario almacenado o null. |
-| isLoggedIn | `Future<bool> isLoggedIn()` | Indica si hay sesión válida. |
-| recuperarAcceso | `Future<void> recuperarAcceso(String userName)` | Envía correo de recuperación. Lanza en error. |
-| cambiarContrasenaDesdeRecuperacion | `Future<void> cambiarContrasenaDesdeRecuperacion({required String token, required String passwordNueva, required String passwordConfirmacion})` | Cambio de contraseña con token JWT; no requiere sesión. Lanza en error. |
+| enviarReporteTurno | `Future<Map<String, dynamic>> enviarReporteTurno({required int turnoId, required String destinatario, String? asunto})` | Delega en datasource remoto. |
 
 ---
 
-### 2.2.2 UserEntity
+### 2.2.3 UserEntity
 
 **Ubicación:** `lib/domain/entities/user_entity.dart`
 
-Entidad de dominio del usuario. Campos: `id`, `email`, `name` (requeridos); `roleName`, `apellidoPaterno`, `apellidoMaterno`, `telefono`, `userName`, `fotoPerfil` (opcionales). Inmutable.
+Campos requeridos: `id`, `email`, `name`. Opcionales: `roleName`, `apellidoPaterno`, `apellidoMaterno`, `telefono`, `userName`, `fotoPerfil`. Inmutable.
 
 ---
 
-### 2.2.3 Casos de uso (Use cases)
-
-Todos reciben el repositorio o dependencias por constructor y exponen un método `call` (o equivalente).
+### 2.2.4 Casos de uso
 
 | Caso de uso | Dependencia | Firma `call` |
 |-------------|-------------|--------------|
@@ -155,16 +153,16 @@ Todos reciben el repositorio o dependencias por constructor y exponen un método
 
 **Ubicación:** `lib/data/datasources/remote/auth_remote_datasource.dart`
 
-Interfaz de la fuente de datos remota de autenticación. No conoce UI ni navegación; lanza `AuthException`/`NetworkException` en errores HTTP.
-
 | Método | Firma | Contrato |
 |--------|--------|----------|
-| login | `Future<LoginResult> login(String email, String password)` | POST al endpoint de login. Retorna `LoginResult(user, token, refreshToken?)`. Si el backend envía `refreshToken` en la respuesta, se incluye en el resultado. |
-| refreshToken | `Future<RefreshResult> refreshToken(String refreshToken)` | POST `/api/auth/refresh` con body `{ "refreshToken": "..." }` (path sin Authorization). Retorna `RefreshResult(token, refreshToken)`. 401/403 → AuthException. |
-| recuperarAcceso | `Future<void> recuperarAcceso({required String userName})` | POST con body `{ "userName": userName }`. Éxito 201. |
-| cambiarContrasenaDesdeRecuperacion | `Future<void> cambiarContrasenaDesdeRecuperacion({required String token, required String passwordNueva, required String passwordConfirmacion})` | POST con header `Authorization: Bearer token` y body `{ "passwordNueva", "passwordConfirmacion" }`. Éxito 201. |
+| login | `Future<LoginResult> login(String email, String password)` | `POST /api/login` → tokens → `GET /api/login/me` → `LoginResult(user, token, refreshToken?, expiresIn?)`. |
+| loginWithNip | `Future<LoginResult> loginWithNip(String userName, String codigo)` | `POST /api/login/operador/accesso/nip` → tokens → `/me`. |
+| refreshToken | `Future<RefreshResult> refreshToken(String refreshToken)` | `POST /api/login/refresh`. |
+| recuperarAcceso | `Future<void> recuperarAcceso({required String userName})` | `POST /api/login/usuario/solicitud/recuperacion`. |
+| cambiarContrasenaDesdeRecuperacion | `Future<void> cambiarContrasenaDesdeRecuperacion({...})` | `POST /api/login/cambiar/accesso` + Bearer token URL. |
+| remoteLogout | `Future<void> remoteLogout(String token)` | `POST /api/login/logout` + Bearer. Errores ignorados (logout optimista). |
 
-`LoginResult`: `user: UserModel`, `token: String`, `refreshToken: String?`. `RefreshResult`: `token: String`, `refreshToken: String`.
+**Modelos:** `LoginTokensResponse`, `LoginMeResponse` → `UserModel` vía `toUserModel()`.
 
 ---
 
@@ -172,17 +170,14 @@ Interfaz de la fuente de datos remota de autenticación. No conoce UI ni navegac
 
 **Ubicación:** `lib/data/datasources/local/auth_local_datasource.dart`
 
-Interfaz de persistencia local de sesión. Depende de **TokenStorageService** para token y refreshToken (no escribe/lee directamente las claves de tokens).
-
 | Método | Firma | Contrato |
 |--------|--------|----------|
-| saveSession | `Future<void> saveSession(UserModel user, String token, {String? refreshToken})` | Persiste token (y opcional refreshToken) vía TokenStorageService; persiste datos de usuario en SharedPreferences. Lanza `StorageException` si falla. |
-| clearSession | `Future<void> clearSession()` | Llama a TokenStorageService.clearTokens() y borra datos de usuario de sesión (no borra último correo NIP). |
-| getStoredUser | `Future<UserModel?> getStoredUser()` | Devuelve usuario guardado o null. |
-| getStoredToken | `Future<String?> getStoredToken()` | Delega en TokenStorageService.getToken(). |
-| hasSession | `Future<bool> hasSession()` | Indica si hay sesión guardada. |
-| saveLastLoginEmail | `Future<void> saveLastLoginEmail(String email)` | Guarda último correo (login NIP). |
-| getLastLoginEmail | `Future<String?> getLastLoginEmail()` | Recupera último correo. |
+| saveSession | `Future<void> saveSession(UserModel user, String token, {String? refreshToken, int? expiresIn})` | Token/refresh/expiry vía `TokenStorageService`; usuario en SharedPreferences. |
+| clearSession | `Future<void> clearSession()` | `clearTokens` + borra usuario y flags de checklist. |
+| getStoredUser | `Future<UserModel?> getStoredUser()` | Usuario guardado. |
+| getStoredToken | `Future<String?> getStoredToken()` | Delega en `TokenStorageService`. |
+| hasSession | `Future<bool> hasSession()` | Flag `keyIsLoggedIn`. |
+| saveLastLoginEmail / getLastLoginEmail | — | Correo para login NIP. |
 
 ---
 
@@ -190,7 +185,7 @@ Interfaz de persistencia local de sesión. Depende de **TokenStorageService** pa
 
 **Ubicación:** `lib/data/repositories/auth_repository_impl.dart`
 
-Implementa `AuthRepository`. Depende de `AuthRemoteDatasource` y `AuthLocalDatasource`. Convierte `UserModel` a `UserEntity` donde corresponda; delega login en remote + saveSession en local; resto de métodos delegan en el datasource correspondiente. Propaga `AppException` sin traducir.
+Implementa `AuthRepository`. `login` delega en remote + `saveSession` local con refresh y expiresIn. `logout` llama `remoteLogout` si hay token y luego `clearSession`.
 
 ---
 
@@ -198,17 +193,19 @@ Implementa `AuthRepository`. Depende de `AuthRemoteDatasource` y `AuthLocalDatas
 
 **Ubicación:** `lib/data/datasources/remote/face_auth_remote_datasource.dart`
 
-Fuente de datos remota para el flujo Face Auth (API BehaviorIQ). Usa `faceAuthBaseUrl` y, para liveness-check, `faceAuthLivenessBaseUrl` si está definida. No usa el ApiClient principal; hace peticiones con `package:http` (multipart para imágenes).
+Fuente remota Face Auth vía **BFF ShiftControl** (`baseUrl`). Usa `package:http` directo (multipart). **No** usa `ApiClient`.
 
 | Método | Firma | Contrato |
 |--------|--------|----------|
-| login | `Future<FaceAuthLoginResult> login(String usuario, String contrasena)` | POST `auth/login` JSON `{ usuario, contrasena }` → `accessToken`. |
-| me | `Future<FaceAuthMeResult> me(String token)` | GET `auth/me` Bearer → `idCliente` (requerido), `idUsuario`, `idSolucion`, `usuario`, `isRoot`, `rol`. Usado en Face Auth y en Inicio de Turno para obtener idCliente/idSolucion antes de GET /placas/validar. |
-| livenessCheck | `Future<FaceAuthLivenessResult> livenessCheck(String token, List<int> image1, List<int> image2)` | POST `embed/liveness-check` multipart dos archivos campo `files` (capture_0.jpg, capture_1.jpg, image/jpeg) → `passed`, `reason`, `score?`. |
-| embed | `Future<List<double>> embed(String token, List<int> imageBytes)` | POST `embed` multipart un archivo campo `file` (capture.jpg) → array 512D (InsightFace ArcFace). |
-| validateFace | `Future<FaceAuthValidateResult> validateFace(String token, String idCliente, List<double> embedding)` | POST `auth/validateFace/{idCliente}` JSON `{ "embeddings": [ 512 números ] }` → `success`, `nombre`, `paterno`, `materno`, `distancia`. 404 → AuthException("404"). |
+| obtainEmbedServiceJwt | `Future<String> obtainEmbedServiceJwt()` | `POST /api/login?Nombres=SIT` con credenciales de servicio internas → JWT para liveness/embed. |
+| livenessCheck | `Future<FaceAuthLivenessResult> livenessCheck(String jwt, List<int> image1, List<int> image2)` | `POST /api/embed/liveness-check` multipart `files` (captura1.jpg, captura2.jpg), Bearer JWT. → `passed`, `reason?`, `score?`. |
+| embed | `Future<List<double>> embed(String jwt, List<int> imageBytes)` | `POST /api/embed` multipart `file` (capture.jpg), Bearer JWT. → `embedding` array 512D. |
+| validateFace | `Future<FaceAuthValidateSessionResult> validateFace(List<double> embedding, {double? latitud, double? longitud})` | `POST /api/auth/validateFace` JSON `{ embeddings, latitud?, longitud? }`. Sin Bearer BehaviorIQ. → `token`, `refreshToken?`, `expiresIn?`. |
+| fetchLoginMe | `Future<UserModel> fetchLoginMe(String sessionToken)` | `GET /api/login/me` Bearer token de validateFace. |
 
-**FaceAuthMeResult:** `idCliente` (String, requerido), `idUsuario` (int?), `idSolucion` (dynamic), `usuario` (String?), `isRoot` (bool?), `rol` (String?). Contrato detallado en **06-plan-face-auth-api-rest.md** y **11-plan-api-auth-me-integracion.md**.
+**Tipos:** `FaceAuthLivenessResult`, `FaceAuthValidateSessionResult`.
+
+**Errores HTTP:** 400/401/403/404 → `AuthException`; 429/500/503 → `NetworkException`; timeout 30 s.
 
 ---
 
@@ -216,13 +213,11 @@ Fuente de datos remota para el flujo Face Auth (API BehaviorIQ). Usa `faceAuthBa
 
 **Ubicación:** `lib/data/datasources/remote/plate_read_remote_datasource.dart`
 
-Fuente de datos remota para lectura de placa (OCR) en el flujo Inicio de Turno → Seleccionar Vehículo. Usa `faceAuthBaseUrl`. No usa el ApiClient principal; hace peticiones con `package:http` (multipart).
-
 | Método | Firma | Contrato |
 |--------|--------|----------|
-| readPlate | `Future<PlateReadResult> readPlate(String token, List<int> imageBytes)` | POST `plate/read` multipart/form-data campo `file` (imagen JPEG). Headers: `Accept: application/json`, `Authorization: Bearer $token`. 200/201 → `PlateReadResult(plateNumber, confidence?)`. 400/404 → NetworkException ("No se detectó placa..."); 403 → "Servicio no habilitado"; 503 → "Servicio no disponible"; 401 → AuthException. |
+| readPlate | `Future<PlateReadResult> readPlate(String token, List<int> imageBytes)` | `POST /api/plate/read` multipart `file` (JPEG), Bearer token sesión. → `plateNumber`, `confidence?`. |
 
-**PlateReadResult:** `plateNumber: String`, `confidence: double?`. Contrato del servicio en **10-plan-api-plate-read-integracion.md**.
+Usa `AppEnvironmentConfig.baseUrl`.
 
 ---
 
@@ -230,13 +225,29 @@ Fuente de datos remota para lectura de placa (OCR) en el flujo Inicio de Turno �
 
 **Ubicación:** `lib/data/datasources/remote/placas_validar_remote_datasource.dart`
 
-Fuente de datos remota para validar si una placa está registrada en el contexto del usuario (API BehaviorIQ). Usa `faceAuthBaseUrl`. No usa el ApiClient principal; hace peticiones con `package:http`.
+| Método | Firma | Contrato |
+|--------|--------|----------|
+| validar | `Future<PlacasValidarResult> validar(String token, String numeroPlaca, {int? idCliente, int? idSolucion, double? latitud, double? longitud})` | `GET /api/placas/validar` query params, Bearer token sesión. |
+
+**PlacasValidarResult:** `registered`, `idPlaca`, `placa`, `marca`, `modelo`, `anio`, `color`, `economico`.
+
+---
+
+### 2.3.7 ReportesRemoteDatasource
+
+**Ubicación:** `lib/data/datasources/remote/reportes_remote_datasource.dart`
 
 | Método | Firma | Contrato |
 |--------|--------|----------|
-| validar | `Future<PlacasValidarResult> validar(String token, String numeroPlaca, {int? idCliente, int? idSolucion, double? latitud, double? longitud})` | GET `placas/validar` con query params `numeroPlaca` (obligatorio), `idCliente`, `idSolucion`, `latitud`, `longitud` (opcionales). Headers: `Accept: application/json`, `Authorization: Bearer $token`. Respuesta 200 → parseo a `PlacasValidarResult`. 401 → AuthException; 4xx/5xx → NetworkException. |
+| enviarReporteTurno | `Future<Map<String, dynamic>> enviarReporteTurno({required int turnoId, required String destinatario, String? asunto})` | `POST /api/reportes/turno/{turnoId}/enviar` vía `ApiClient`. Body `{ destinatario, asunto? }`. Timeout 30 s. |
 
-**PlacasValidarResult:** modelo con `registered: bool`, `idPlaca: int?`, `placa: String?`, `marca: String?`, `modelo: String?`, `anio: int?`, `color: String?`, `economico: String?`. Contrato del servicio en **12-plan-api-placas-validar-integracion.md**.
+---
+
+### 2.3.8 TurnosService
+
+**Ubicación:** `lib/features/turnos/services/turnos_service.dart`
+
+Servicio de dominio de turnos. Usa `ApiClient` y `http` multipart según el endpoint. Contratos principales documentados en **01-contexto.md** §1.4 (crear/cerrar turno, checklist, historial, detalle, incidentes, combustible).
 
 ---
 
@@ -246,10 +257,7 @@ Fuente de datos remota para validar si una placa está registrada en el contexto
 
 **Ubicación:** `lib/presentation/app_router.dart`
 
-- **onGenerateRouteStatic(RouteSettings settings):** `Route<dynamic>?`
-  - Normaliza `settings.name`: si contiene `?`, extrae `path` y `queryParameters['token']`.
-  - Switch por `path`: `RouteConstants.login` → LoginPage; `home` → MainShell; `nuevaContrasena` → NuevaContrasenaPage(token: queryToken). Default → LoginPage.
-  - No realiza lógica de negocio; solo construye rutas.
+- `onGenerateRouteStatic(RouteSettings settings)`: normaliza path/query; `login` → `LoginPage`; `home` → `MainShell`; `nuevaContrasena` → `NuevaContrasenaPage(token)`.
 
 ---
 
@@ -261,70 +269,93 @@ Estado: `AuthState(status, user, errorMessage)`. Estados: `initial`, `loading`, 
 
 | Método | Firma | Contrato |
 |--------|--------|----------|
-| login | `Future<bool> login(String email, String password)` | Valida, llama LoginUseCase, actualiza state; retorna true si éxito. En error muestra mensaje en state; no muestra banner (lo hace la UI si lo desea). |
-| loginWithNip | `Future<bool> loginWithNip(String userName, String codigo)` | Delega en AuthService; actualiza state. |
-| setSessionFromFaceAuth | `Future<void> setSessionFromFaceAuth(UserEntity user, String token)` | Persiste sesión (saveSession) y actualiza state a authenticated con el user. Usado por FaceAuthFlowPage tras validateFace exitoso. |
-| logout | `Future<void> logout()` | Llama LogoutUseCase y pone state en unauthenticated. |
-| recuperarAcceso | `Future<void> recuperarAcceso({required BuildContext context, required String userName})` | Valida no vacío; llama repository. Éxito: banner success + pushNamedAndRemoveUntil(login). Error: banner error. Usa context.mounted antes de UI. |
-| cambiarContrasenaDesdeRecuperacion | `Future<void> cambiarContrasenaDesdeRecuperacion({required BuildContext context, required String token, required String passwordNueva, required String passwordConfirmacion})` | Valida token y coincidencia de contraseñas; llama repository. Éxito: banner success + pushNamedAndRemoveUntil(login). Error 400 u otros: banner error. |
+| checkAuth | `Future<void> checkAuth()` | Restaura sesión al iniciar app. |
+| login | `Future<bool> login(String email, String password)` | LoginUseCase; actualiza state. |
+| loginWithNip | `Future<bool> loginWithNip(String userName, String codigo)` | AuthService; actualiza state. |
+| setSessionFromFaceAuth | `Future<void> setSessionFromFaceAuth(UserEntity user, String token)` | saveSession + state authenticated (disponible; Face Auth actual usa `saveSession` + `checkAuth` directamente). |
+| logout | `Future<void> logout()` | LogoutUseCase + unauthenticated. |
+| recuperarAcceso | `Future<void> recuperarAcceso({required BuildContext context, required String userName})` | Banner + navegación a login. |
+| cambiarContrasenaDesdeRecuperacion | `Future<void> cambiarContrasenaDesdeRecuperacion({...})` | Banner + navegación a login. |
 
 ---
 
 ### 2.4.3 Providers (Riverpod)
 
-**Ubicación:** `lib/presentation/controllers/auth_controller.dart` (y main)
+**Ubicación:** `lib/presentation/controllers/auth_controller.dart`, `mi_turno_provider.dart`, `reportes_provider.dart`, `theme_controller.dart`
 
 | Provider | Tipo | Contrato |
 |----------|------|----------|
-| sharedPreferencesProvider | `Provider<SharedPreferences>` | Debe overridearse en main con el valor de `SharedPreferences.getInstance()`. |
-| tokenStorageServiceProvider | `Provider<TokenStorageService>` | TokenStorageServiceImpl(sharedPreferencesProvider). |
-| refreshTokenRunnerProvider | `Provider<RefreshTokenRunner>` | RefreshTokenRunner(tokenStorageService, AppEnvironmentConfig.baseUrl). Usado por HttpApiClient para renovar token ante 401/403. |
-| sessionExpiredTriggerProvider | `StateProvider<int>` | Al incrementarse, el listener en la app (p. ej. TurnosSpringApp) ejecuta AuthController.logout() para cerrar sesión automáticamente cuando el refresh falla. |
-| authLocalDatasourceProvider | `Provider<AuthLocalDatasource>` | AuthLocalDatasourceImpl(prefs, tokenStorageServiceProvider). |
-| apiClientProvider | `Provider<ApiClient>` | HttpApiClient(getToken: tokenStorage.getToken, refreshToken: refreshTokenRunner.run, onSessionExpired: incrementa sessionExpiredTriggerProvider). |
-| authRemoteDatasourceProvider | `Provider<AuthRemoteDatasource>` | Devuelve `AuthRemoteDatasourceReal(apiClient)`. |
-| authRepositoryProvider | `Provider<AuthRepository>` | Devuelve `AuthRepositoryImpl(remote, local)`. |
-| loginUseCaseProvider | `Provider<LoginUseCase>` | Depende de authRepositoryProvider. |
-| logoutUseCaseProvider | `Provider<LogoutUseCase>` | Idem. |
-| getCurrentUserUseCaseProvider | `Provider<GetCurrentUserUseCase>` | Idem. |
-| checkAuthUseCaseProvider | `Provider<CheckAuthUseCase>` | Idem. |
-| authServiceProvider | `Provider<AuthService>` | AuthService(apiClient, authLocalDatasource). |
-| faceAuthRemoteDatasourceProvider | `Provider<FaceAuthRemoteDatasource>` | FaceAuthRemoteDatasourceImpl() (usa faceAuthBaseUrl y faceAuthLivenessBaseUrl). |
-| faceAuthServiceProvider | `Provider<FaceAuthService>` | FaceAuthService(faceAuthRemoteDatasourceProvider). |
-| plateReadRemoteDatasourceProvider | `Provider<PlateReadRemoteDatasource>` | PlateReadRemoteDatasourceImpl() (usa faceAuthBaseUrl; POST /plate/read). |
-| placasValidarRemoteDatasourceProvider | `Provider<PlacasValidarRemoteDatasource>` | PlacasValidarRemoteDatasourceImpl() (usa faceAuthBaseUrl; GET /placas/validar). |
-| placaValidadaProvider | `StateProvider<PlacasValidarResult?>` | Estado global del resultado de GET /placas/validar. Inicio de Turno lo escribe al validar la placa y lo limpia al identificar una nueva; Apertura de Turno (CapturaOdometroPage) y otras pantallas lo leen para mostrar placa, marca, modelo, año y económico. Ubicación: `lib/presentation/turnos/placa_validada_provider.dart`. |
-| authControllerProvider | `StateNotifierProvider<AuthController, AuthState>` | AuthController(login, logout, getCurrentUser, checkAuth, authService, authRepository). |
+| sharedPreferencesProvider | `Provider<SharedPreferences>` | Override en `main`. |
+| tokenStorageServiceProvider | `Provider<TokenStorageService>` | |
+| refreshTokenRunnerProvider | `Provider<RefreshTokenRunner>` | |
+| sessionExpiredTriggerProvider | `StateProvider<int>` | Logout automático al fallar refresh. |
+| authLocalDatasourceProvider | `Provider<AuthLocalDatasource>` | |
+| apiClientProvider | `Provider<ApiClient>` | HttpApiClient con refresh. |
+| authRemoteDatasourceProvider | `Provider<AuthRemoteDatasource>` | |
+| authRepositoryProvider | `Provider<AuthRepository>` | |
+| profileServiceProvider | `Provider<ProfileService>` | ApiClient + TokenStorageService. |
+| authServiceProvider | `Provider<AuthService>` | Login NIP. |
+| faceAuthRemoteDatasourceProvider | `Provider<FaceAuthRemoteDatasource>` | FaceAuthRemoteDatasourceImpl (baseUrl). |
+| faceAuthServiceProvider | `Provider<FaceAuthService>` | |
+| plateReadRemoteDatasourceProvider | `Provider<PlateReadRemoteDatasource>` | |
+| placasValidarRemoteDatasourceProvider | `Provider<PlacasValidarRemoteDatasource>` | |
+| placaValidadaProvider | `StateProvider<PlacasValidarResult?>` | Estado global vehículo validado. |
+| authControllerProvider | `StateNotifierProvider<AuthController, AuthState>` | |
+| turnosServiceProvider | `Provider<TurnosService>` | |
+| miTurnoActivoProvider | `FutureProvider` | Turno activo del operador. |
+| turnoDetalleProvider | `FutureProvider.family` | Detalle por `idTurno`. |
+| informacionGeneralProvider | `FutureProvider` | Resumen bitácora. |
+| checklistProgressServiceProvider | `Provider<ChecklistProgressService>` | |
+| registroCombustibleProvider | — | Incidencia gasolina. |
+| reporteIncidenteSeleccionProvider / reporteIncidenteRegistradaProvider | — | Flujo incidente. |
+| reportesRemoteDatasourceProvider | `Provider<ReportesRemoteDatasource>` | |
+| reportesRepositoryProvider | `Provider<ReportesRepository>` | |
+| reportesServiceProvider | `Provider<ReportesService>` | |
+| themeModePreferenceProvider | `StateNotifierProvider` | Tema claro/oscuro/sistema. |
 
 ---
 
 ### 2.4.4 Rutas y pantallas
 
-- **Login:** `RouteConstants.login` → `LoginPage` (incluye botón "Reconocimiento facial" que abre FaceAuthFlowPage con push).
-- **Face Auth:** No es ruta estática; se abre con `Navigator.push(context, MaterialPageRoute(builder: (_) => FaceAuthFlowPage()))` desde LoginPage. Al éxito se llama setSessionFromFaceAuth y pushNamedAndRemoveUntil(home).
-- **Home:** `RouteConstants.home` → `MainShell` (drawer + tabs).
-- **Nueva contraseña:** `RouteConstants.nuevaContrasena` o ruta con query `?token=...` → `NuevaContrasenaPage(token: queryToken)`.
-- **Inicio de Turno:** Tras identificar placa (IdentificarPlacaPage) se llama GET /placas/validar; el resultado se guarda en `placaValidadaProvider`. El **header** muestra solo Folio: Pendiente, Fecha y Lugar (no placa, marca, modelo, año ni económico). El botón **Continuar** se habilita solo cuando `placaValidadaProvider` tiene `registered == true`. Al pulsar Continuar se navega a Captura de odómetro (la pantalla lee del provider).
-- **Apertura de Turno (Captura de odómetro):** `CapturaOdometroPage` construye la tarjeta del vehículo con `ref.watch(placaValidadaProvider)`. Orden de datos en la card: Placa, Económico, Año, Marca/Modelo (sin hora). Pill de placa alineado.
-- **Cierre de Turno:** No se abre cámara de placa; datos del vehículo desde `placaValidadaProvider`. Info box con texto específico de cierre ("fotografía de resguardo...").
-- **Resumen de Turno:** Card "Información General" con vehículo (`placaValidadaProvider`) y operador (`authControllerProvider`).
-- **Control de Turnos:** Card "Estado Actual" con datos del vehículo desde `placaValidadaProvider`.
-- Navegación post-éxito recuperación/cambio contraseña: `Navigator.pushNamedAndRemoveUntil(context, RouteConstants.login, (route) => false)`.
+| Ruta / acceso | Pantalla | Notas |
+|---------------|----------|-------|
+| `/login` | `LoginPage` | Credenciales, NIP, Face Auth (push). |
+| push | `FaceAuthFlowPage` | No es ruta estática. |
+| `/home` | `MainShell` | Tabs: Home, Turnos, Historial, Perfil. |
+| `/nueva-contrasena?token=` | `NuevaContrasenaPage` | Deep link web. |
+| Tab Turnos | `ControlTurnosPage` | Navigator anidado para checklist. |
+| Tab Historial | `HistorialTurnosPage` | Lista paginada por fecha. |
+| push | `DetalleTurnoPage` | Desde historial con `idTurno`. |
+| Perfil | `ProfilePage`, `CrearNipPage`, `CambiarContrasenaPage` | |
+| Settings | `AppearancePage` | |
 
 ---
 
 ### 2.4.5 Convenciones de UI por flujo
 
-Contrato de comportamiento de pantallas para mantener coherencia.
-
 | Flujo / pantalla | Convención |
 |------------------|------------|
-| **Face Auth** | Mensajes claros de éxito/error; en fallo de verificación pantalla "No pudimos verificar tu rostro" con Reintentar / Volver al login; sin banner duplicado; estados de carga "Verificando tu identidad" y "Analizando..." durante liveness/embed/validateFace. |
-| **Inicio de Turno** | Sin card "Asignación Requerida"; card única de vehículo/operador; selector de vehículo con subtítulo "Placa registrada" cuando la placa está validada; header solo Folio, Fecha, Lugar; Continuar habilitado solo con placa registrada. |
-| **Apertura de Turno** | Primera card: Placa, Económico, Año, Marca/Modelo (sin hora); pill de placa alineado; datos desde `placaValidadaProvider`. |
-| **Cierre de Turno** | Datos desde `placaValidadaProvider`; no cámara de placa; texto del info box específico de cierre. |
-| **Resumen de Turno** | Card "Información General": vehículo (`placaValidadaProvider`) y operador (`authControllerProvider`). |
-| **Control de Turnos** | Card "Estado Actual": datos del vehículo desde `placaValidadaProvider`. |
+| **Face Auth** | Captura doble automática; loading "Verificando tu identidad" / "Analizando...."; éxito con banner; **cualquier error** → banner + `pushNamedAndRemoveUntil(login)`. Embedding solo vía backend (`captura2` → `/api/embed`). |
+| **Inicio de Turno** | Card vehículo/operador; placa validada vía `placaValidadaProvider`; Continuar solo con `registered == true`. |
+| **Apertura de Turno** | Card: Placa, Económico, Año, Marca/Modelo desde provider. |
+| **Cierre de Turno** | Datos desde `placaValidadaProvider`; sin cámara de placa. |
+| **Resumen / Control** | Vehículo desde provider; operador desde `authControllerProvider`. |
+| **Detalle turno** | Evidencias con `ExpandableNetworkImage` (loading); compartir reporte por sheet. |
+| **Historial** | Scroll infinito por día; filtro local y rango de fechas. |
+
+---
+
+### 2.4.6 Widgets reutilizables
+
+**Ubicación:** `lib/presentation/widgets/`
+
+| Widget | Uso |
+|--------|-----|
+| `AppAlertBanner` / `showAppAlertBanner` | Banners éxito/error/info. |
+| `LoadingOverlay` | Overlay de carga en formularios. |
+| `CustomTextField` | Campos de texto estilizados. |
+| `ExpandableNetworkImage` | Imagen remota expandible con loading. |
+| `CapturedEvidenceImage` / `NetworkImagePreview` | Evidencias en checklist. |
 
 ---
 
@@ -334,18 +365,19 @@ Contrato de comportamiento de pantallas para mantener coherencia.
 
 **Ubicación:** `lib/features/auth/services/auth_service.dart`
 
-Login por NIP. Depende de `ApiClient` y `AuthLocalDatasource`. Método relevante: `Future<UserModel> loginWithNip(String userName, String codigo)`; hace POST y guarda sesión; lanza `AuthException` en error. No maneja UI.
+| Método | Firma | Contrato |
+|--------|--------|----------|
+| loginWithNip | `Future<UserModel> loginWithNip(String userName, String codigo)` | POST NIP + saveSession local. |
+
+---
 
 ### 2.5.2 FaceAuthService
 
 **Ubicación:** `lib/features/auth/services/face_auth_service.dart`
 
-Orquesta los pasos Face Auth. Depende de `FaceAuthRemoteDatasource`.
-
 | Método | Firma | Contrato |
 |--------|--------|----------|
-| loginAndGetIdCliente | `Future<FaceAuthCredentialsResult> loginAndGetIdCliente(String usuario, String contrasena)` | Ejecuta login → me; retorna token e idCliente (pasos 1 y 2). |
-| livenessEmbedAndValidateFace | `Future<FaceAuthValidateResult> livenessEmbedAndValidateFace({ required String token, required String idCliente, required Uint8List capture1, required Uint8List capture2 })` | livenessCheck(capture1, capture2) → si passed, embed(capture2) → validateFace(idCliente, embedding). Lanza AuthException si liveness no pasa o validateFace 404. |
+| livenessEmbedAndValidateFace | `Future<({FaceAuthValidateSessionResult session, UserModel user})> livenessEmbedAndValidateFace({required Uint8List capture1, required Uint8List capture2, double? latitud, double? longitud})` | JWT servicio → liveness (captura1+2) → embed (**solo captura2**) → validateFace → fetchLoginMe. Valida embedding vacío o `length != 512`. Lanza `AuthException` si liveness `passed == false`. |
 
 ---
 
@@ -353,7 +385,28 @@ Orquesta los pasos Face Auth. Depende de `FaceAuthRemoteDatasource`.
 
 **Ubicación:** `lib/features/profile/services/profile_service.dart`
 
-Servicios de perfil (cambio de contraseña desde perfil, NIP, etc.) que usan `ApiClient`. Contrato según métodos públicos que expongan (no se detalla aquí cada uno).
+| Método | Endpoint | Contrato |
+|--------|----------|----------|
+| changePassword | `PATCH /api/login/cambiar/accesso` | Bearer explícito; body `passwordActual`, `passwordNueva`, `passwordNuevaConfirmacion`. |
+| updateUserNip | `PATCH /api/login/mi-nip` | Bearer explícito; body `{ pinHash }`. |
+
+---
+
+### 2.5.4 ReportesService
+
+**Ubicación:** `lib/features/reportes/services/reportes_service.dart`
+
+| Método | Contrato |
+|--------|----------|
+| enviarReporteTurno | Delega en `ReportesRepository`; valida destinatario. |
+
+---
+
+### 2.5.5 ChecklistProgressService
+
+**Ubicación:** `lib/features/turnos/services/checklist_progress_service.dart`
+
+Persiste en SharedPreferences el progreso del checklist (paso actual, ids de bitácora, placa, datos de vehículo) para retomar flujos incompletos.
 
 ---
 
@@ -361,15 +414,14 @@ Servicios de perfil (cambio de contraseña desde perfil, NIP, etc.) que usan `Ap
 
 ### 2.6.1 Ruta inicial (Web)
 
-- **Stub (no web):** `getInitialRouteFromHash()` → `null`.
-- **Web:** `getInitialRouteFromHash()` lee `window.location.hash`, parsea path; si es `RouteConstants.nuevaContrasena` retorna esa constante, si no `null`.
-- Import condicional: `initial_route_stub.dart` `if (dart.library.html) initial_route_web.dart` as `initial_route`.
+- **Stub:** `getInitialRouteFromHash()` → `null`.
+- **Web:** lee `window.location.hash`; si path es `nuevaContrasena` retorna constante.
+- Import condicional: `initial_route_stub.dart` / `initial_route_web.dart`.
 
-### 2.6.2 Lectura de bytes de archivo (path)
+### 2.6.2 Lectura de bytes de archivo
 
-- **Stub (web):** `readFileBytes(String path)` → `Future<Uint8List?>.value(null)`.
-- **IO (mobile/desktop):** `readFileBytes(String path)` → lee `File(path).readAsBytes()`; en error retorna null.
-- Uso: cargar imagen guardada por path en móvil; en web no se puede leer path, se retorna null.
+- **Stub (web):** `readFileBytes` → `null`.
+- **IO:** `File(path).readAsBytes()`.
 
 ---
 
@@ -377,24 +429,29 @@ Servicios de perfil (cambio de contraseña desde perfil, NIP, etc.) que usan `Ap
 
 ```
 Presentation (UI, Controllers, Router)
-    → Domain (Use cases, Entities)
-    → Domain (AuthRepository interface)
-        → Data (AuthRepositoryImpl)
-            → Data (AuthRemoteDatasource, AuthLocalDatasource)
-                → Core (ApiClient, AppException, Constants, TokenStorageService)
-Core (HttpApiClient)
-    → TokenStorageService (getToken), RefreshTokenRunner (refreshToken callback), sessionExpiredTriggerProvider (onSessionExpired)
-Data (AuthLocalDatasourceImpl)
-    → TokenStorageService (saveToken, saveRefreshToken, getToken, clearTokens)
-Features (AuthService, FaceAuthService, ProfileService)
-    → Core (ApiClient), Data (AuthLocalDatasource cuando aplica)
-    → Data (FaceAuthRemoteDatasource) → Core (AppException, config faceAuthBaseUrl)
+    → Domain (Use cases, Entities, Repository interfaces)
+        → Data (RepositoryImpl)
+            → Data (Remote/Local Datasources)
+                → Core (ApiClient, TokenStorageService, AppException, baseUrl)
 
-Turnos (Inicio de Turno, Identificar placa, Captura de odómetro):
-    → Data (PlateReadRemoteDatasource para POST /plate/read, PlacasValidarRemoteDatasource para GET /placas/validar, FaceAuthRemoteDatasource.me para idCliente/idSolucion)
-    → Presentation (placaValidadaProvider: StateProvider<PlacasValidarResult?>)
+Features (AuthService, FaceAuthService, ProfileService, TurnosService, ReportesService)
+    → ApiClient y/o http directo
+    → Datasources / Repositories
+
+Face Auth:
+    FaceAuthFlowPage → FaceAuthService → FaceAuthRemoteDatasource → BFF (baseUrl)
+    Éxito: AuthRepository.saveSession + AuthController.checkAuth
+
+Turnos:
+    UI → TurnosService / Providers → ApiClient o http multipart
+    Placa: PlateReadRemoteDatasource, PlacasValidarRemoteDatasource → placaValidadaProvider
+
+Reportes:
+    DetalleTurnoPage → ReportesService → ReportesRepository → ReportesRemoteDatasource → ApiClient
+
+Refresh:
+    HttpApiClient → RefreshTokenRunner (POST /api/login/refresh) → TokenStorageService
+    onSessionExpired → sessionExpiredTriggerProvider → AuthController.logout()
 ```
 
-**Refresh token:** HttpApiClient no depende de AuthRepository ni AuthController; recibe callbacks (getToken desde TokenStorageService, refreshToken desde RefreshTokenRunner.run, onSessionExpired que incrementa sessionExpiredTriggerProvider). El listener de sessionExpiredTriggerProvider en la app llama a AuthController.logout(). RefreshTokenRunner usa `http` directo para POST /api/auth/refresh y evita ciclos con ApiClient.
-
-Face Auth: FaceAuthFlowPage usa FaceAuthService; no pasa por AuthRepository para login; al éxito llama AuthController.setSessionFromFaceAuth (que sí usa AuthRepository.saveSession). Las capas superiores no conocen implementaciones concretas de las inferiores; solo interfaces y contratos descritos en este documento.
+Las capas superiores no conocen implementaciones concretas; solo interfaces y contratos descritos en este documento.

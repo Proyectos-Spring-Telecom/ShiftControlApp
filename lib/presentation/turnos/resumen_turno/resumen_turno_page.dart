@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gradient_slide_to_act/gradient_slide_to_act.dart';
 import 'package:quickalert/quickalert.dart';
 
+import '../../../core/constants/app_constants.dart';
 import '../../../core/errors/app_exception.dart';
 import '../../../core/utils/date_format_utils.dart';
 import '../../../data/models/cerrar_bitacora_response.dart';
@@ -61,15 +62,16 @@ class _ResumenTurnoPageState extends ConsumerState<ResumenTurnoPage> {
   @override
   Widget build(BuildContext context) {
     final infoAsync = ref.watch(informacionGeneralProvider);
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      child: Scaffold(
       backgroundColor: ResumenTurnoColors.background(context),
       appBar: AppBar(
         backgroundColor: ResumenTurnoColors.background(context),
         elevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: ResumenTurnoColors.textPrimary(context)),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
+        automaticallyImplyLeading: false,
+        leading: const SizedBox.shrink(),
+        leadingWidth: AppConstants.appBarLeadingWidthWithoutBack,
         titleSpacing: 0,
         title: Align(
           alignment: Alignment.centerLeft,
@@ -115,6 +117,7 @@ class _ResumenTurnoPageState extends ConsumerState<ResumenTurnoPage> {
           ),
           _buildIniciarTurnoButton(context, widget.checklistType),
         ],
+      ),
       ),
     );
   }
@@ -512,7 +515,7 @@ class _ResumenTurnoPageState extends ConsumerState<ResumenTurnoPage> {
                   child: _buildMetricaCard(
                     context,
                     icon: _iconForMetrica(items[i].etiqueta),
-                    label: items[i].etiqueta ?? '—',
+                    label: _metricaLabel(items[i].etiqueta),
                     value: items[i].valor ?? '—',
                   ),
                 ),
@@ -522,7 +525,7 @@ class _ResumenTurnoPageState extends ConsumerState<ResumenTurnoPage> {
                     child: _buildMetricaCard(
                       context,
                       icon: _iconForMetrica(items[i + 1].etiqueta),
-                      label: items[i + 1].etiqueta ?? '—',
+                      label: _metricaLabel(items[i + 1].etiqueta),
                       value: items[i + 1].valor ?? '—',
                     ),
                   ),
@@ -550,6 +553,16 @@ class _ResumenTurnoPageState extends ConsumerState<ResumenTurnoPage> {
             ),
       ),
     );
+  }
+
+  String _metricaLabel(String? etiqueta) {
+    final e = (etiqueta ?? '').toLowerCase();
+    if (e.contains('odómetro') || e.contains('odometro')) {
+      return widget.checklistType == ChecklistType.apertura
+          ? 'Odómetro Inicial'
+          : 'Odómetro Final';
+    }
+    return etiqueta ?? '—';
   }
 
   IconData _iconForMetrica(String? etiqueta) {

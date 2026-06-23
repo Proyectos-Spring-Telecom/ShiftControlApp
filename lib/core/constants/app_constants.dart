@@ -37,4 +37,7 @@ abstract final class AppConstants {
   static const String keyChecklistIdBitacoraCierre = 'checklist_id_bitacora_cierre';
   static const String keyChecklistDuracionCierre = 'checklist_duracion_cierre';
   static const String keyChecklistEsCierre = 'checklist_es_cierre';
+
+  /// Ancho del área leading cuando no hay botón de regreso (equivale al IconButton back).
+  static const double appBarLeadingWidthWithoutBack = 56;
 }

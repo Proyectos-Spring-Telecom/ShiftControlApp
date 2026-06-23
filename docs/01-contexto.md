@@ -33,7 +33,7 @@ lib/
 ├── config/                 # Ambiente (baseUrl DEV/QA/PROD)
 ├── core/
 │   ├── auth/               # TokenStorageService, RefreshTokenRunner (POST /api/login/refresh)
-│   ├── constants/          # Rutas, keys SharedPreferences
+│   ├── constants/          # Rutas, keys SharedPreferences, appBarLeadingWidthWithoutBack
 │   ├── errors/             # AppException, AuthException, NetworkException, StorageException
 │   ├── network/            # ApiClient, HttpApiClient (refresh + reintento 401/403)
 │   ├── theme/              # AppTheme, colores
@@ -125,9 +125,9 @@ lib/
 
 **Hub:** `ControlTurnosPage` consulta `GET /api/turnos/mi-turno` (`miTurnoActivoProvider`).
 
-**Checklist apertura (9 pasos):** Inicio → Odómetro → Daños → Testigos → Fluidos → Luces → Accesorios → Documentación → Resumen.
+**Checklist apertura (9 pasos):** Inicio → Odómetro → Inspección exterior → Testigos → Fluidos → Luces → Accesorios → Documentación → Resumen.
 
-**Checklist cierre (9 pasos):** rutas paralelas `/cierre-*`.
+**Checklist cierre (9 pasos):** mismo orden con rutas `/cierre-*`; paso 1 es inicio de cierre (sin captura de placa).
 
 **APIs principales (`TurnosService`):**
 
@@ -144,16 +144,77 @@ lib/
 | Accesorios | `POST /api/turnos/accesorios-vehiculo` |
 | Documentación | `POST /api/turnos/documentacion-vehiculo` |
 | Resumen bitácora | `GET /api/bitacora-vehicular/informacion-general` |
+| Historial | `GET /api/turnos/list?fechaDesde=&fechaHasta=` |
+| Detalle turno | `GET /api/turnos/{id}` |
 | Combustible | `POST /api/turnos/incidencias/gasolina` |
 | Incidente/accidente | `POST /api/turnos/incidencias/accidente` + `GET /api/ubicacion/reverse` |
 
-**Progreso local:** `ChecklistProgressService` en SharedPreferences.
+**Progreso local:** `ChecklistProgressService` en SharedPreferences (paso actual, ids de bitácora/turno, placa, datos de vehículo). **Retomar:** desde `ControlTurnosPage` si hay progreso incompleto (`onAperturaResumeTap` / `onCierreResumeTap`).
+
+**Orden canónico (9 pasos, apertura y cierre):**
+
+| Paso | Apertura | Cierre |
+|------|----------|--------|
+| 1 | `InicioTurnoPage` (`/inicio-turno`) | `InicioTurnoPage` modo cierre (`/cierre-turno`) |
+| 2 | Captura odómetro | Captura odómetro |
+| 3 | Inspección exterior (`RegistroDanosPage`) | Inspección exterior |
+| 4 | Indicadores testigo | Indicadores testigo |
+| 5 | Niveles de fluido | Niveles de fluido |
+| 6 | Luces del vehículo | Luces del vehículo |
+| 7 | Accesorios | Accesorios |
+| 8 | Documentación | Documentación |
+| 9 | Resumen de turno | Resumen de turno |
+
+Rutas de cierre con prefijo `/cierre-*` (definidas en `ChecklistCierrePasos`).
+
+**Navegación secuencial (pasos internos):** en las pantallas del checklist (excepto `InicioTurnoPage` en paso 1) no hay regreso a pasos anteriores:
+
+- `PopScope(canPop: false)` — bloquea botón físico Back, gesto iOS y pop del Navigator.
+- AppBar sin flecha: `automaticallyImplyLeading: false`.
+- Espaciado del título: `leadingWidth: AppConstants.appBarLeadingWidthWithoutBack` (56 px, equivalente al área del botón back).
+
+Pantallas con restricción: `IdentificarPlacaPage`, `CapturaOdometroPage`, `IndicadoresTestigoPage`, `NivelesFluidoPage`, `LucesVehiculoPage`, `AccesoriosPage`, `DocumentacionPage`, `RegistroDanosPage`, `ResumenTurnoPage`.
+
+**Resumen de turno (`ResumenTurnoPage`):**
+
+- Consulta `GET /api/bitacora-vehicular/informacion-general` vía `informacionGeneralProvider`.
+- Secciones: estado, información general, estado del vehículo, tiempo/ubicación, métricas iniciales.
+- En **Métricas Iniciales**, la etiqueta del odómetro depende del flujo: **Odómetro Inicial** (apertura) u **Odómetro Final** (cierre); el valor y formato provienen del API sin cambios.
+- Acción final: `GradientSlideToAct` — «Iniciar Turno» (apertura) o «Cerrar Turno» (cierre).
+- Feedback de éxito/error en esta pantalla: `QuickAlert` (resto de la app usa principalmente `AppAlertBanner`).
+
+### Registro de combustible
+
+- **Pantalla:** `RegistroCombustiblePage` — acceso desde `ControlTurnosPage` (`/registro-combustible`).
+- **API:** `POST /api/turnos/incidencias/gasolina` (multipart: fotos bomba/tablero, litros, total, kilometraje, GPS).
+- Requiere turno activo (`miTurnoActivoProvider` / `turnoAperturaProvider`).
+- Evidencias en memoria (`Uint8List`); validaciones locales antes de enviar.
+
+### Reporte de incidente / accidente
+
+- **Pantalla:** `ReporteIncidentePage` — acceso desde `ControlTurnosPage` (`/reporte-incidente`).
+- **API:** `POST /api/turnos/incidencias/accidente` + `GET /api/ubicacion/reverse` (geocodificación inversa para mostrar dirección).
+- Tipo de incidencia, descripción, múltiples fotos (máx. 10 MB c/u), GPS obligatorio.
+- Providers: `reporteIncidenteSeleccionProvider`, `reporteIncidenteRegistradaProvider`.
 
 ### Placa y vehículo (Inicio de Turno)
+
 - **OCR placa:** `IdentificarPlacaPage` → `POST /api/plate/read` (`PlateReadRemoteDatasource`)
 - **Validar placa:** `GET /api/placas/validar?numeroPlaca=...` (`PlacasValidarRemoteDatasource`)
 - **Estado global:** `placaValidadaProvider` (`StateProvider<PlacasValidarResult?>`)
 - **UI:** header con Folio/Fecha/Lugar; Continuar habilitado solo con `registered == true`; datos de vehículo en CapturaOdometro, Resumen, Control de Turnos
+- **Identificar placa:** cámara en vivo, captura automática, recorte; en paso interno del checklist aplica restricción de no regreso (`PopScope`)
+
+### Home y shell principal
+
+- **HomeTab:** pantalla de bienvenida con botón «Comenzar» → tab Turnos / `ControlTurnosPage`.
+- **MainShell:** bottom navigation (Inicio, Turnos, Historial, Perfil), drawer, navigator anidado para checklist y rutas auxiliares (combustible, incidente).
+
+### Feedback visual (banners)
+
+- **`AppAlertBanner` / `showAppAlertBanner`:** banners éxito/info/error en la mayoría de flujos; **auto-cierre a los 3 segundos** (`_bannerVisibilityDuration`).
+- **`LoadingOverlay`:** overlay de carga en formularios.
+- **`QuickAlert`:** usado en `ResumenTurnoPage` para confirmaciones de inicio/cierre de turno.
 
 ### Historial de turnos
 - **Pantalla:** `HistorialTurnosPage` (tab Historial en `MainShell`)
@@ -185,7 +246,8 @@ lib/
 - **Refresh reactivo:** renovación ante 401/403, no proactiva por timer.
 - **Logout optimista:** siempre limpia sesión local aunque falle el servidor.
 - **Face Auth sin IA local:** embedding generado exclusivamente por `POST /api/embed` con captura2.
-- **Errores controlados:** `AppException` y subclases; UI con `AppAlertBanner`.
+- **Checklist secuencial:** pasos internos sin navegación hacia atrás (`PopScope`); solo avance en el flujo.
+- **Errores controlados:** `AppException` y subclases; UI con `AppAlertBanner` (auto-cierre 3 s) y `QuickAlert` en resumen de turno.
 - **Sin lógica de red en UI:** controllers orquestan; red en datasources/servicios.
 - **Web:** deep links por hash; fotos con `Image.memory` / bytes; banner con contexto de overlay.
 - **Fotos en checklist:** `Uint8List` en memoria para compatibilidad web.

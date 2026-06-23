@@ -71,6 +71,10 @@ Contrato del cliente HTTP. Las respuestas 2xx se consideran éxito; en 4xx/5xx l
 
 Claves de persistencia estables: `keyAuthToken`, `keyRefreshToken`, `keyTokenExpiresIn`, `keyTokenExpiresAt`, datos de usuario, checklist, tema, etc.
 
+| Constante | Valor | Uso |
+|-----------|-------|-----|
+| `appBarLeadingWidthWithoutBack` | `56` | Ancho reservado en AppBar de pasos del checklist cuando no hay botón de regreso (equivalente al `leading` del `IconButton` back). |
+
 ---
 
 ### 2.1.6 TokenStorageService
@@ -247,7 +251,27 @@ Usa `AppEnvironmentConfig.baseUrl`.
 
 **Ubicación:** `lib/features/turnos/services/turnos_service.dart`
 
-Servicio de dominio de turnos. Usa `ApiClient` y `http` multipart según el endpoint. Contratos principales documentados en **01-contexto.md** §1.4 (crear/cerrar turno, checklist, historial, detalle, incidentes, combustible).
+Servicio de dominio de turnos. Usa `ApiClient` y `http` multipart según el endpoint.
+
+| Método / acción | Endpoint | Notas |
+|-----------------|----------|--------|
+| Crear turno (apertura) | `POST /api/turnos` | Multipart: placa, lat, lng, evidencia. |
+| Cierre geográfico | `PATCH /api/turnos` | Multipart. |
+| Cerrar bitácora | `PATCH /api/turnos/bitacora/cierre` | Cierre definitivo desde resumen. |
+| Odómetro / tablero | `POST /api/turnos/tablero` | Foto tablero + kilometraje. |
+| Inspección exterior | `POST /api/turnos/inspeccion-vehiculo-ex` | Daños por vista del vehículo. |
+| Testigos | `POST /api/turnos/testigos` | |
+| Niveles fluido | `POST /api/turnos/niveles-fluidos` | |
+| Luces | `POST /api/turnos/luces-vehiculo` | |
+| Accesorios | `POST /api/turnos/accesorios-vehiculo` | |
+| Documentación | `POST /api/turnos/documentacion-vehiculo` | |
+| Información general bitácora | `GET /api/bitacora-vehicular/informacion-general` | Resumen de turno. |
+| Mi turno activo | `GET /api/turnos/mi-turno` | Control de turnos. |
+| Historial | `GET /api/turnos/list` | Query `fechaDesde`, `fechaHasta`. |
+| Detalle turno | `GET /api/turnos/{id}` | `obtenerTurnoDetalle`. |
+| Combustible | `POST /api/turnos/incidencias/gasolina` | Multipart. |
+| Incidente / accidente | `POST /api/turnos/incidencias/accidente` | Multipart + fotos. |
+| Ubicación inversa | `GET /api/ubicacion/reverse` | Reporte de incidente. |
 
 ---
 
@@ -323,7 +347,11 @@ Estado: `AuthState(status, user, errorMessage)`. Estados: `initial`, `loading`, 
 | push | `FaceAuthFlowPage` | No es ruta estática. |
 | `/home` | `MainShell` | Tabs: Home, Turnos, Historial, Perfil. |
 | `/nueva-contrasena?token=` | `NuevaContrasenaPage` | Deep link web. |
-| Tab Turnos | `ControlTurnosPage` | Navigator anidado para checklist. |
+| Tab Turnos | `ControlTurnosPage` | Navigator anidado para checklist; retomar progreso incompleto. |
+| Checklist apertura/cierre | Ver `ChecklistAperturaPasos` / `ChecklistCierrePasos` | 9 pasos; rutas `/inicio-turno`, `/captura-odometro`, … y `/cierre-*`. |
+| push | `IdentificarPlacaPage` | Desde inicio de turno (apertura); OCR + validación. |
+| push | `RegistroCombustiblePage` | `/registro-combustible` desde control de turnos. |
+| push | `ReporteIncidentePage` | `/reporte-incidente` desde control de turnos. |
 | Tab Historial | `HistorialTurnosPage` | Lista paginada por fecha. |
 | push | `DetalleTurnoPage` | Desde historial con `idTurno`. |
 | Perfil | `ProfilePage`, `CrearNipPage`, `CambiarContrasenaPage` | |
@@ -336,10 +364,13 @@ Estado: `AuthState(status, user, errorMessage)`. Estados: `initial`, `loading`, 
 | Flujo / pantalla | Convención |
 |------------------|------------|
 | **Face Auth** | Captura doble automática; loading "Verificando tu identidad" / "Analizando...."; éxito con banner; **cualquier error** → banner + `pushNamedAndRemoveUntil(login)`. Embedding solo vía backend (`captura2` → `/api/embed`). |
-| **Inicio de Turno** | Card vehículo/operador; placa validada vía `placaValidadaProvider`; Continuar solo con `registered == true`. |
+| **Inicio de Turno (paso 1)** | Card vehículo/operador; placa validada vía `placaValidadaProvider`; Continuar solo con `registered == true`. **Mantiene** flecha de regreso y navegación back normal. |
+| **Pasos internos checklist** | `PopScope(canPop: false)` + `automaticallyImplyLeading: false` + `leadingWidth: AppConstants.appBarLeadingWidthWithoutBack`. Sin regreso a pasos anteriores (botón físico, gesto, AppBar). Pantallas: identificar placa, captura odómetro, indicadores, fluidos, luces, accesorios, documentación, inspección exterior (`RegistroDanosPage`), resumen. |
 | **Apertura de Turno** | Card: Placa, Económico, Año, Marca/Modelo desde provider. |
-| **Cierre de Turno** | Datos desde `placaValidadaProvider`; sin cámara de placa. |
-| **Resumen / Control** | Vehículo desde provider; operador desde `authControllerProvider`. |
+| **Cierre de Turno** | Datos desde `placaValidadaProvider`; sin cámara de placa en paso 1. |
+| **Resumen de turno** | `informacionGeneralProvider`; etiqueta odómetro: **Odómetro Inicial** (apertura) / **Odómetro Final** (cierre) según `ChecklistType`; valor sin cambios desde API. Acción: `GradientSlideToAct`. Errores/éxito: `QuickAlert`. |
+| **Registro combustible** | Turno activo requerido; fotos bomba/tablero; `registroCombustibleProvider`. |
+| **Reporte incidente** | Tipo, descripción, fotos, GPS; geocodificación inversa; providers de selección/registro. |
 | **Detalle turno** | Evidencias con `ExpandableNetworkImage` (loading); compartir reporte por sheet. |
 | **Historial** | Scroll infinito por día; filtro local y rango de fechas. |
 
@@ -351,7 +382,7 @@ Estado: `AuthState(status, user, errorMessage)`. Estados: `initial`, `loading`, 
 
 | Widget | Uso |
 |--------|-----|
-| `AppAlertBanner` / `showAppAlertBanner` | Banners éxito/error/info. |
+| `AppAlertBanner` / `showAppAlertBanner` | Banners éxito/error/info. **Contrato:** visible **3 segundos** y se oculta automáticamente (`_bannerVisibilityDuration`). |
 | `LoadingOverlay` | Overlay de carga en formularios. |
 | `CustomTextField` | Campos de texto estilizados. |
 | `ExpandableNetworkImage` | Imagen remota expandible con loading. |
@@ -407,6 +438,14 @@ Estado: `AuthState(status, user, errorMessage)`. Estados: `initial`, `loading`, 
 **Ubicación:** `lib/features/turnos/services/checklist_progress_service.dart`
 
 Persiste en SharedPreferences el progreso del checklist (paso actual, ids de bitácora, placa, datos de vehículo) para retomar flujos incompletos.
+
+| Método / concepto | Contrato |
+|-------------------|----------|
+| `leerProgreso()` | Devuelve `ChecklistProgress?` con paso, `idTurno`, flags de cierre, datos de vehículo. |
+| `actualizarPaso(int paso)` | Persiste el paso actual del checklist. |
+| `tieneProgresoIncompleto` | Indica si hay checklist sin finalizar (usado en `ControlTurnosPage` para retomar). |
+
+**Navegación:** `checklist_apertura_navigation.dart` define `ChecklistAperturaPasos`, `ChecklistCierrePasos` y `routeForPaso` / navegación standalone al retomar.
 
 ---
 

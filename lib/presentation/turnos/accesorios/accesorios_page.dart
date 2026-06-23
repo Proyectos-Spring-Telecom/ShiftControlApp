@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../widgets/app_alert_banner.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/constants/app_constants.dart';
 import '../../../core/errors/app_exception.dart';
 import '../../../data/models/registrar_accesorios_vehiculo_request.dart';
 import '../checklist_apertura_navigation.dart';
@@ -106,15 +107,16 @@ class _AccesoriosPageState extends ConsumerState<AccesoriosPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      child: Scaffold(
       backgroundColor: AccesoriosColors.background(context),
       appBar: AppBar(
         backgroundColor: AccesoriosColors.background(context),
         elevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: AccesoriosColors.textPrimary(context)),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
+        automaticallyImplyLeading: false,
+        leading: const SizedBox.shrink(),
+        leadingWidth: AppConstants.appBarLeadingWidthWithoutBack,
         titleSpacing: 0,
         centerTitle: false,
         title: Text(
@@ -146,6 +148,7 @@ class _AccesoriosPageState extends ConsumerState<AccesoriosPage> {
           ),
           _buildContinuarButton(context),
         ],
+      ),
       ),
     );
   }
@@ -224,7 +227,7 @@ class _AccesoriosPageState extends ConsumerState<AccesoriosPage> {
 
   Widget _buildSectionHeader(BuildContext context) {
     return Text(
-      'LISTA DE VERIFICACIÓN',
+      'Lista de verificación',
       style: Theme.of(context).textTheme.bodySmall?.copyWith(
             color: AccesoriosColors.sectionHeader(context),
             fontWeight: FontWeight.w600,

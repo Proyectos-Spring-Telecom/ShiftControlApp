@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../../core/constants/app_constants.dart';
 import '../../../core/errors/app_exception.dart';
 import '../checklist_apertura_navigation.dart';
 import '../checklist_progress_provider.dart';
@@ -167,15 +168,16 @@ class _CapturaOdometroPageState extends ConsumerState<CapturaOdometroPage> {
     final isApertura = widget.checklistType == ChecklistType.apertura;
     final pageTitle = isApertura ? 'Apertura de Turno' : 'Cierre de Turno';
     
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      child: Scaffold(
       backgroundColor: CapturaOdometroColors.background(context),
       appBar: AppBar(
         backgroundColor: CapturaOdometroColors.background(context),
         elevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: CapturaOdometroColors.textPrimary(context)),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
+        automaticallyImplyLeading: false,
+        leading: const SizedBox.shrink(),
+        leadingWidth: AppConstants.appBarLeadingWidthWithoutBack,
         titleSpacing: 0,
         title: Align(
           alignment: Alignment.centerLeft,
@@ -214,6 +216,7 @@ class _CapturaOdometroPageState extends ConsumerState<CapturaOdometroPage> {
           ),
           _buildSiguienteButton(context),
         ],
+      ),
       ),
     );
   }

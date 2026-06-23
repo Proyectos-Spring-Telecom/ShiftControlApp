@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+/// Duración visible de todo [AppAlertBanner] mostrado vía [showAppAlertBanner].
+const Duration _bannerVisibilityDuration = Duration(seconds: 3);
+
 /// Tipo de alerta: éxito, información o error.
 enum AppAlertType { success, info, error }
 
@@ -157,8 +160,14 @@ void showAppAlertBanner(
   VoidCallback? onDismissed,
 }) {
   late OverlayEntry entry;
+  var dismissed = false;
+
   void remove() {
-    entry.remove();
+    if (dismissed) return;
+    dismissed = true;
+    if (entry.mounted) {
+      entry.remove();
+    }
     onDismissed?.call();
   }
 
@@ -177,6 +186,7 @@ void showAppAlertBanner(
   );
 
   Overlay.of(context).insert(entry);
+  Future<void>.delayed(_bannerVisibilityDuration, remove);
 }
 
 /// Banner de éxito (reemplazo visual de SnackBar verde).

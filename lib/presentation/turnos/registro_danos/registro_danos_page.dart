@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/constants/app_constants.dart';
 import '../checklist_apertura_navigation.dart';
 import '../checklist_progress_provider.dart';
 import '../models/checklist_type.dart';
@@ -141,15 +142,16 @@ class _RegistroDanosPageState extends ConsumerState<RegistroDanosPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      child: Scaffold(
       backgroundColor: RegistroDanosColors.background(context),
       appBar: AppBar(
         backgroundColor: RegistroDanosColors.background(context),
         elevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: RegistroDanosColors.textPrimary(context)),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
+        automaticallyImplyLeading: false,
+        leading: const SizedBox.shrink(),
+        leadingWidth: AppConstants.appBarLeadingWidthWithoutBack,
         titleSpacing: 0,
         centerTitle: false,
         title: Text(
@@ -183,6 +185,7 @@ class _RegistroDanosPageState extends ConsumerState<RegistroDanosPage> {
           ),
           _buildContinuarButton(context),
         ],
+      ),
       ),
     );
   }

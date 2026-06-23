@@ -213,7 +213,7 @@ class _RegistroCombustiblePageState extends ConsumerState<RegistroCombustiblePag
         ref.read(registroCombustibleProvider.notifier).state = response.id;
       }
 
-      showAppAlertSuccess(context, message: response.message ?? 'Incidencia de gasolina registrada correctamente');
+      showAppAlertSuccess(context, message: response.message ?? 'Registro de combustible exitoso.');
       await ref.read(miTurnoActivoProvider.notifier).fetch();
       if (!mounted) return;
       Navigator.of(context).pop();
@@ -228,7 +228,7 @@ class _RegistroCombustiblePageState extends ConsumerState<RegistroCombustiblePag
     } catch (e) {
       if (!mounted) return;
       setState(() => _guardando = false);
-      showAppAlertError(context, message: 'No fue posible registrar la incidencia: $e');
+      showAppAlertError(context, message: 'No fue posible registrar el registro de combustible: $e');
     }
   }
 

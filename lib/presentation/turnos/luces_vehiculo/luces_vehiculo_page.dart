@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../widgets/app_alert_banner.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/constants/app_constants.dart';
 import '../../../core/errors/app_exception.dart';
 import '../../../data/models/registrar_luces_vehiculo_request.dart';
 import '../checklist_apertura_navigation.dart';
@@ -42,15 +43,15 @@ class _LucesVehiculoPageState extends ConsumerState<LucesVehiculoPage> {
   }
 
   final Map<String, bool> _lucesEstado = {
-    'carretera': true,
-    'cruce': true,
-    'intermitentes_delanteras': true,
-    'direccionales_delanteras': true,
-    'intermitentes_laterales': true,
-    'intermitentes_traseras': true,
-    'direccionales_traseras': true,
-    'reversa': true,
-    'freno': true,
+    'carretera': false,
+    'cruce': false,
+    'intermitentes_delanteras': false,
+    'direccionales_delanteras': false,
+    'intermitentes_laterales': false,
+    'intermitentes_traseras': false,
+    'direccionales_traseras': false,
+    'reversa': false,
+    'freno': false,
   };
 
   void _toggleLuz(String key) {
@@ -105,15 +106,16 @@ class _LucesVehiculoPageState extends ConsumerState<LucesVehiculoPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      child: Scaffold(
       backgroundColor: LucesVehiculoColors.background(context),
       appBar: AppBar(
         backgroundColor: LucesVehiculoColors.background(context),
         elevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: LucesVehiculoColors.textPrimary(context)),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
+        automaticallyImplyLeading: false,
+        leading: const SizedBox.shrink(),
+        leadingWidth: AppConstants.appBarLeadingWidthWithoutBack,
         titleSpacing: 0,
         centerTitle: false,
         title: Text(
@@ -143,6 +145,7 @@ class _LucesVehiculoPageState extends ConsumerState<LucesVehiculoPage> {
           ),
           _buildContinuarButton(context),
         ],
+      ),
       ),
     );
   }

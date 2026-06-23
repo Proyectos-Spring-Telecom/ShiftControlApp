@@ -4,6 +4,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/constants/app_constants.dart';
 import '../../../core/errors/app_exception.dart';
 import '../../controllers/auth_controller.dart';
 import '../../widgets/app_alert_banner.dart';
@@ -207,25 +208,21 @@ class _IdentificarPlacaPageState extends ConsumerState<IdentificarPlacaPage> {
     }
   }
 
-  void _regresar() {
-    if (widget.onRegresar != null) {
-      widget.onRegresar!();
-    } else {
-      Navigator.of(context).pop();
-    }
-  }
+  void _regresar() {}
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      child: Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: InicioTurnoColors.background(context),
         elevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: InicioTurnoColors.textPrimary(context)),
-          onPressed: _regresar,
-        ),
+        automaticallyImplyLeading: false,
+        leading: const SizedBox.shrink(),
+        leadingWidth: AppConstants.appBarLeadingWidthWithoutBack,
+        titleSpacing: 0,
         title: Text(
           'Identificar vehículo por placa',
           style: Theme.of(context).textTheme.titleLarge?.copyWith(
@@ -251,6 +248,7 @@ class _IdentificarPlacaPageState extends ConsumerState<IdentificarPlacaPage> {
             child: _buildBottomActions(),
           ),
         ],
+      ),
       ),
     );
   }

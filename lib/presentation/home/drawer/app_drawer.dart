@@ -7,6 +7,7 @@ import '../../auth/profile/profile_page.dart';
 import '../../settings/appearance_page.dart';
 import '../../turnos/control_turnos_page.dart';
 import '../../turnos/historial_turnos/historial_turnos_page.dart';
+import '../../turnos/registro_vehiculo/registro_vehiculo_page.dart';
 
 class AppDrawer extends ConsumerWidget {
   const AppDrawer({
@@ -122,6 +123,18 @@ class AppDrawer extends ConsumerWidget {
                   ),
                 );
               }
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.directions_car_outlined),
+            title: const Text('Registro de Vehículo'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const RegistroVehiculoPage(),
+                ),
+              );
             },
           ),
           ListTile(

@@ -208,20 +208,43 @@ class _IdentificarPlacaPageState extends ConsumerState<IdentificarPlacaPage> {
     }
   }
 
-  void _regresar() {}
+  void _regresar() {
+    if (_isLoading) return;
+
+    if (widget.onRegresar != null) {
+      widget.onRegresar!();
+      return;
+    }
+
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final canGoBack = widget.onRegresar != null;
+
     return PopScope(
       canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && !_isLoading) {
+          _regresar();
+        }
+      },
       child: Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: InicioTurnoColors.background(context),
         elevation: 0,
         automaticallyImplyLeading: false,
-        leading: const SizedBox.shrink(),
-        leadingWidth: AppConstants.appBarLeadingWidthWithoutBack,
+        leading: canGoBack
+            ? IconButton(
+                icon: Icon(Icons.arrow_back, color: InicioTurnoColors.textPrimary(context)),
+                onPressed: _isLoading ? null : _regresar,
+              )
+            : const SizedBox.shrink(),
+        leadingWidth: canGoBack ? null : AppConstants.appBarLeadingWidthWithoutBack,
         titleSpacing: 0,
         title: Text(
           'Identificar vehículo por placa',

@@ -2,7 +2,7 @@
 
 ## 1.1 Descripción general
 
-**Turnos Spring** es una aplicación Flutter multiplataforma (Android, iOS, Web) para el control de turnos operativos. Permite autenticación (login con correo/contraseña, NIP y reconocimiento facial), flujos de apertura y cierre de turno (checklist, fotos de resguardo/tablero, odómetro, combustible, daños, reporte de incidentes), registro de vehículos (alta de placa vía `POST /api/placas`), consulta de historial y detalle de turnos, envío de reportes por correo, y gestión de perfil y apariencia.
+**Turnos Spring** es una aplicación Flutter multiplataforma (Android, iOS, Web) para el control de turnos operativos. Permite autenticación (login con correo/contraseña, NIP y reconocimiento facial), flujos de apertura y cierre de turno (checklist, fotos de resguardo/tablero, odómetro, combustible, daños, reporte de incidentes), registro de vehículos (alta de placa vía `POST /api/placas`), **afiliación de rostro del operador** (captura facial + `POST /api/rostros`), consulta de historial y detalle de turnos, envío de reportes por correo, y gestión de perfil y apariencia.
 
 Toda la comunicación con el backend se realiza contra el **BFF ShiftControl** (`AppEnvironmentConfig.baseUrl`). No hay URLs separadas para BehaviorIQ ni hosts legacy (`spcode.ddns.net`, `faceauth.ddns.net`).
 
@@ -21,7 +21,8 @@ La solución sigue una **arquitectura en capas** (data / domain / presentation) 
 | Persistencia local | SharedPreferences (sesión, checklist, tema) |
 | Ubicación | `geolocator` (Face Auth, apertura/cierre de turno) |
 | Cámara / imágenes | `camera`, `image_picker`, `image` |
-| Fechas (selector año) | `calendar_date_picker2` (Registro de Vehículo) |
+| Fechas (historial) | `calendar_date_picker2` (selector de rango en Historial de Turnos) |
+| Selector de año (vehículo) | Bottom sheet con lista dinámica (Registro de Vehículo; sin calendario) |
 | Temas | Material 3 (`AppTheme` light/dark, `ThemeController`) |
 | Plataformas | Android, iOS, Web (hash routing para deep links) |
 
@@ -42,20 +43,22 @@ lib/
 ├── data/
 │   ├── datasources/
 │   │   ├── local/          # AuthLocalDatasource
-│   │   └── remote/         # Auth, FaceAuth, PlateRead, PlacasValidar, Reportes, RegistroVehiculo
-│   ├── models/             # DTOs (UserModel, LoginTokensResponse, RegistroVehiculoRequest, etc.)
-│   └── repositories/       # AuthRepositoryImpl, ReportesRepositoryImpl, RegistroVehiculoRepositoryImpl
+│   │   └── remote/         # Auth, FaceAuth, FaceAffiliation, AfiliarRostro, PlateRead, PlacasValidar, Reportes, RegistroVehiculo
+│   ├── models/             # DTOs (UserModel, LoginMeResponse, RegistroVehiculoRequest, FaceAffiliationRequest, etc.)
+│   └── repositories/       # AuthRepositoryImpl, FaceAffiliationRepositoryImpl, AfiliarRostroRepositoryImpl, ReportesRepositoryImpl, RegistroVehiculoRepositoryImpl
 ├── domain/
 │   ├── entities/           # UserEntity
-│   ├── repositories/       # AuthRepository, ReportesRepository, RegistroVehiculoRepository
+│   ├── repositories/       # AuthRepository, FaceAffiliationRepository, AfiliarRostroRepository, ReportesRepository, RegistroVehiculoRepository
 │   └── usecases/           # Login, Logout, GetCurrentUser, CheckAuth
 ├── features/
 │   ├── auth/               # AuthService (login NIP), FaceAuthService
+│   ├── afiliar_rostro/     # FaceAffiliationService, AfiliarRostroService (legacy enroll)
 │   ├── profile/            # ProfileService (contraseña, NIP)
 │   └── turnos/             # TurnosService, ChecklistProgressService
 ├── presentation/
 │   ├── controllers/        # AuthController, ThemeController
 │   ├── auth/               # Login, recuperar/nueva contraseña, perfil, face_auth
+│   ├── afiliar_rostro/     # AfiliarRostroPage, captura facial de afiliación
 │   ├── home/               # MainShell, Drawer, bottom nav, tabs
 │   ├── turnos/             # Control, checklist apertura/cierre, historial, detalle, placa, incidentes, registro vehículo
 │   ├── settings/           # Apariencia
@@ -76,6 +79,7 @@ lib/
   1. `POST /api/login` → `token`, `refreshToken`, `expiresIn`
   2. `GET /api/login/me` (Bearer) → datos del usuario
 - **Persistencia:** `AuthRepository.saveSession` → `TokenStorageService` + SharedPreferences
+- **Token JWT:** normalización en `TokenStorageService` y `HttpApiClient` (eliminación de saltos de línea); `GET /api/login/me` **sí recibe Bearer** automático (no se omite como en `POST /api/login`)
 
 #### Login NIP
 - **UI:** `LoginPage` (modo NIP; requiere correo previo en `getLastLoginEmail`)
@@ -213,7 +217,7 @@ Pantallas con restricción de no regreso en el checklist (pasos 2–9): `Captura
 - **Acceso:** menú lateral (`AppDrawer`) → `RegistroVehiculoPage` (push independiente del checklist).
 - **Formulario (6 campos):** número de placa, marca, modelo, año, color, número económico.
 - **OCR placa:** reutiliza `IdentificarPlacaPage` (mismo flujo que Inicio de Turno); `plate_number` prellena el campo placa; al regresar sin capturar se mantiene el estado del formulario.
-- **Selector de año:** `calendar_date_picker2` en modo diálogo (`showCalendarDatePicker2Dialog`, `CalendarDatePicker2Mode.year`); rango 1980 – año actual + 1; el campo muestra solo el año (ej. `2022`).
+- **Selector de año:** bottom sheet con lista desplegable generada dinámicamente (`RegistroVehiculoAnioPicker.availableYears`); rango **1980 – año actual + 1**; el campo muestra solo el año (ej. `2024`); valor enviado como `int`.
 - **API:** `POST /api/placas` vía `RegistroVehiculoRemoteDatasource` → `RegistroVehiculoRepository` (`ApiClient`, JWT automático).
 - **Body:** `{ numeroPlaca, marca, modelo, anio, color, economico }`.
 - **Respuesta exitosa:** `idPlaca`, `numeroPlaca`, `economico`; mensaje `AppAlertBanner`: «Vehículo registrado correctamente».
@@ -221,10 +225,32 @@ Pantallas con restricción de no regreso en el checklist (pasos 2–9): `Captura
 - **UI:** botones homologados al resto de la app (primario ancho completo, acciones secundarias con estilo de Detalle de Turno); loading en botón Guardar vehículo; validación de campos obligatorios antes de habilitar envío.
 - **Providers:** `registroVehiculoRepositoryProvider`, `registroVehiculoEnviadoProvider` (último formulario enviado en sesión).
 
+### Afiliar Rostro
+
+- **Acceso:** menú lateral (`AppDrawer`) → `AfiliarRostroPage` (push independiente del checklist).
+- **Información del operador:** campos de solo lectura cargados con `GET /api/login/me` vía `AfiliarRostroOperadorDatasource` → `AfiliarRostroOperadorInfo` (Nombre, Apellido paterno, Apellido materno, Teléfono).
+- **Contrato `/api/login/me`:** respuesta plana en raíz (sin wrapper `data`); campos `message`, `id`, `nombre`, `apellidoPaterno`, `apellidoMaterno`, `telefono`, `userName`, `rol`, `permisos`, etc. (`LoginMeResponse`).
+- **Flujo de captura (UI actual):** botón **Capturar rostro** → `FaceAffiliationCapturePage` orquesta **3 capturas** independientes del login facial:
+  1. **Frente** (`sample_index=1`) — instrucción «Mira al frente»
+  2. **Izquierda** (`sample_index=2`) — «Gira un poco el rostro a la izquierda»
+  3. **Derecha** (`sample_index=3`) — «Gira un poco el rostro a la derecha»
+- **Captura individual:** `FaceAffiliationSingleCapturePage` — cámara frontal, óvalo verde (estilo Face Auth); **3 segundos de espera después de mostrar la instrucción** (countdown visible); luego `takePicture()` automático. **No reutiliza** `FaceAuthCapturePage`.
+- **Pipeline API por captura:**
+  1. `POST /api/embed/validate-pose?sample_index={1|2|3}` — multipart `file`, Bearer JWT de sesión
+  2. `POST /api/embed` — multipart `file` (mismo mecanismo que login facial; JWT de servicio vía `FaceAuthRemoteDatasource.obtainEmbedServiceJwt`) → embedding 512D
+- **Registro final:** `POST /api/rostros` — body `{ nombre, paterno, materno, telefono, embeddingsList }` (3 embeddings de 512 elementos).
+- **Errores:**
+  - Pose inválida → banner error + reintento de la captura actual
+  - HTTP **409** en `POST /api/rostros` → pop con `FaceAffiliationCaptureResult.conflictoRegistro()`; `AfiliarRostroPage` muestra `showAppAlertInfo` («Rostro registrado»)
+  - Otros errores → banner error; usuario puede reintentar
+- **Éxito:** banner verde «Rostro afiliado correctamente» + banner de estado «Rostro afiliado» con fecha; botón **Capturar rostro** deshabilitado.
+- **Arquitectura:** `FaceAffiliationRemoteDatasource` → `FaceAffiliationService` → `FaceAffiliationRepository` → `faceAffiliationRepositoryProvider`. Operador: `afiliarRostroOperadorProvider`.
+- **No usa en UI actual:** `POST /api/auth/validateFace`, `POST /api/face-auth/enroll`, liveness de 2 capturas (`AfiliarRostroService` / `AfiliarRostroRemoteDatasource` permanecen en código legacy sin uso en pantalla).
+
 ### Home y shell principal
 
 - **HomeTab:** pantalla de bienvenida con botón «Comenzar» → tab Turnos / `ControlTurnosPage`.
-- **MainShell:** bottom navigation (Inicio, Turnos, Historial, Perfil), drawer (incluye acceso a Registro de Vehículo), navigator anidado para checklist y rutas auxiliares (combustible, incidente).
+- **MainShell:** bottom navigation (Inicio, Turnos, Historial, Perfil), drawer (incluye acceso a **Registro de Vehículo** y **Afiliar Rostro**), navigator anidado para checklist y rutas auxiliares (combustible, incidente).
 
 ### Feedback visual (banners)
 
@@ -235,7 +261,7 @@ Pantallas con restricción de no regreso en el checklist (pasos 2–9): `Captura
 ### Historial de turnos
 - **Pantalla:** `HistorialTurnosPage` (tab Historial en `MainShell`)
 - **API:** `GET /api/turnos/list?fechaDesde=&fechaHasta=` (scroll infinito día a día, máx. 30 días)
-- Filtro de búsqueda local y selector de rango de fechas
+- Filtro de búsqueda local y selector de rango de fechas con `calendar_date_picker2`
 
 ### Detalle de turno
 - **Pantalla:** `DetalleTurnoPage` — navegación desde historial con `idTurno`
@@ -258,10 +284,12 @@ Pantallas con restricción de no regreso en el checklist (pasos 2–9): `Captura
 
 - **Un solo BFF:** `AppEnvironmentConfig.baseUrl` para login, turnos, placas, face auth, reportes y perfil. Face Auth usa `package:http` directo en `FaceAuthRemoteDatasource` (multipart y JWT de servicio).
 - **Login en 2 pasos:** tokens en `POST /api/login`; perfil en `GET /api/login/me`.
-- **Tokens centralizados:** `TokenStorageService` (access, refresh, `expiresIn`/`expiresAt`). `AuthLocalDatasource` delega en él.
+- **Tokens centralizados:** `TokenStorageService` (access, refresh, `expiresIn`/`expiresAt`); normalización de JWT (sin saltos de línea). `AuthLocalDatasource` delega en él.
+- **Bearer en `/api/login/me`:** `HttpApiClient._shouldSkipAutoBearer` omite Authorization solo en rutas públicas de login (`POST /api/login`, refresh, NIP, recuperación); **`GET /api/login/me` sí envía Bearer**.
 - **Refresh reactivo:** renovación ante 401/403, no proactiva por timer.
 - **Logout optimista:** siempre limpia sesión local aunque falle el servidor.
 - **Face Auth sin IA local:** embedding generado exclusivamente por `POST /api/embed` con captura2.
+- **Afiliar Rostro independiente del login:** flujo propio de 3 capturas con validate-pose + embed + `POST /api/rostros`; pantalla de captura dedicada (`FaceAffiliationSingleCapturePage`) con delay post-instrucción.
 - **Checklist secuencial:** pasos internos sin navegación hacia atrás (`PopScope`); solo avance en el flujo.
 - **Errores controlados:** `AppException` y subclases; UI con `AppAlertBanner` (auto-cierre 3 s) y `QuickAlert` en resumen de turno.
 - **Sin lógica de red en UI:** controllers orquestan; red en datasources/servicios.
@@ -288,6 +316,8 @@ Auth:     POST /api/login, GET /api/login/me, POST /api/login/refresh
           POST /api/login/usuario/solicitud/recuperacion
           POST|PATCH /api/login/cambiar/accesso, PATCH /api/login/mi-nip
 Face:     POST /api/embed/liveness-check, POST /api/embed, POST /api/auth/validateFace
+          POST /api/embed/validate-pose, POST /api/rostros
+          POST /api/face-auth/enroll (legacy; no usado en UI actual de Afiliar Rostro)
 Turnos:   /api/turnos/*, /api/bitacora-vehicular/informacion-general
           /api/ubicacion/reverse, /api/turnos/incidencias/*
 Placas:   POST /api/plate/read, GET /api/placas/validar, POST /api/placas

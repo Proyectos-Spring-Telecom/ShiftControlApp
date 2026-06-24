@@ -39,9 +39,18 @@ class HttpApiClient implements ApiClient {
     return Uri.parse('$_baseUrl$p');
   }
 
-  bool _isAuthPath(String path) {
-    final lower = path.toLowerCase();
-    return lower.contains('login') || lower.contains('refresh');
+  bool _shouldSkipAutoBearer(String path) {
+    final pathOnly = path.toLowerCase().split('?').first;
+    const unauthenticatedLoginPaths = [
+      '/api/login',
+      '/api/login/refresh',
+      '/api/login/operador/accesso/nip',
+      '/api/login/usuario/solicitud/recuperacion',
+    ];
+    for (final skip in unauthenticatedLoginPaths) {
+      if (pathOnly == skip) return true;
+    }
+    return false;
   }
 
   Future<Map<String, String>> _headers({Map<String, String>? extra, bool useAuth = true}) async {
@@ -50,7 +59,7 @@ class HttpApiClient implements ApiClient {
     if (useAuth) {
       final token = await getToken();
       if (token != null && token.isNotEmpty) {
-        map['Authorization'] = 'Bearer $token';
+        map['Authorization'] = 'Bearer ${token.replaceAll(RegExp(r'\s+'), '')}';
       }
     }
     return map;
@@ -150,7 +159,7 @@ class HttpApiClient implements ApiClient {
 
   @override
   Future<Map<String, dynamic>> get(String path, {Map<String, String>? headers}) async {
-    final useAuth = !_isAuthPath(path);
+    final useAuth = !_shouldSkipAutoBearer(path);
     var h = await _headers(extra: headers, useAuth: useAuth);
     var response = await http.get(_uri(path), headers: h);
 
@@ -188,7 +197,7 @@ class HttpApiClient implements ApiClient {
     dynamic body,
     Map<String, String>? headers,
   }) async {
-    final useAuth = !_isAuthPath(path);
+    final useAuth = !_shouldSkipAutoBearer(path);
     var h = await _headers(extra: headers, useAuth: useAuth);
     final encoded = body != null ? jsonEncode(body is Map ? body : body) : null;
     var response = await http.post(_uri(path), headers: h, body: encoded);

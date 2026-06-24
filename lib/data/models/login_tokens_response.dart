@@ -18,10 +18,11 @@ class LoginTokensResponse {
     final accessToken = (data['token'] as String?) ??
         (data['accessToken'] as String?) ??
         '';
+    final refresh = data['refreshToken'] as String?;
 
     return LoginTokensResponse(
-      token: accessToken,
-      refreshToken: data['refreshToken'] as String?,
+      token: accessToken.replaceAll(RegExp(r'\s+'), ''),
+      refreshToken: refresh?.replaceAll(RegExp(r'\s+'), ''),
       expiresIn: (data['expiresIn'] as num?)?.toInt(),
     );
   }

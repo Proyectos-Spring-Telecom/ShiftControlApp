@@ -20,7 +20,7 @@ Contrato del cliente HTTP. Las respuestas 2xx se consideran éxito; en 4xx/5xx l
 | patch | `Future<Map<String, dynamic>> patch(String path, {dynamic body, Map<String, String>? headers})` | Idem. |
 | delete | `Future<Map<String, dynamic>> delete(String path, {Map<String, String>? headers})` | Idem. |
 
-**Implementación:** `HttpApiClient` usa `AppEnvironmentConfig.baseUrl`. Recibe `getToken`, `refreshToken` y `onSessionExpired`. En paths que contienen `"login"` o `"refresh"` no se envía `Authorization` automático (salvo que se pase explícitamente en `headers`). Ante 401/403 intenta un refresh; si falla llama `onSessionExpired()`.
+**Implementación:** `HttpApiClient` usa `AppEnvironmentConfig.baseUrl`. Recibe `getToken`, `refreshToken` y `onSessionExpired`. `_shouldSkipAutoBearer(path)` omite `Authorization` automático **solo** en rutas públicas de login: `/api/login`, `/api/login/refresh`, `/api/login/operador/accesso/nip`, `/api/login/usuario/solicitud/recuperacion`. **`GET /api/login/me` y el resto de endpoints autenticados sí reciben Bearer.** El token se normaliza (`replaceAll(RegExp(r'\s+'), '')`) al construir el header. Ante 401/403 intenta un refresh; si falla llama `onSessionExpired()`.
 
 ---
 
@@ -138,11 +138,34 @@ Claves de persistencia estables: `keyAuthToken`, `keyRefreshToken`, `keyTokenExp
 
 | Método | Firma | Comportamiento |
 |--------|--------|----------------|
-| registrar | `Future<RegistroVehiculoResponse> registrar({required RegistroVehiculoRequest request})` | Delega en datasource remoto; registra placa en ShiftControl / BehaviorIQ. |
+| registrar | `Future<RegistroVehiculoResponse> registrar({required RegistroVehiculoRequest request})` | Delega en datasource remoto; registra placa en ShiftControl. |
 
 ---
 
-### 2.2.4 UserEntity
+### 2.2.4 FaceAffiliationRepository
+
+**Ubicación:** `lib/domain/repositories/face_affiliation_repository.dart`
+
+| Método | Firma | Comportamiento |
+|--------|--------|----------------|
+| validarPoseYGenerarEmbedding | `Future<List<double>> validarPoseYGenerarEmbedding({required int sampleIndex, required String filename, required List<int> imageBytes})` | validate-pose + embed 512D por captura. |
+| registrarRostro | `Future<FaceAffiliationResponse> registrarRostro({required FaceAffiliationRequest request})` | `POST /api/rostros` con 3 embeddings. |
+
+---
+
+### 2.2.5 AfiliarRostroRepository
+
+**Ubicación:** `lib/domain/repositories/afiliar_rostro_repository.dart`
+
+| Método | Firma | Comportamiento |
+|--------|--------|----------------|
+| obtenerOperadorActual | `Future<AfiliarRostroOperadorInfo> obtenerOperadorActual()` | `GET /api/login/me` → datos operador. |
+| validarCapturas | `Future<void> validarCapturas({required Uint8List foto1, required Uint8List foto2})` | Liveness legacy (2 fotos). **No usado en UI actual.** |
+| afiliarRostro | `Future<AfiliarRostroResponse> afiliarRostro({required String idUsuario, required Uint8List foto1, required Uint8List foto2})` | `POST /api/face-auth/enroll` legacy. **No usado en UI actual.** |
+
+---
+
+### 2.2.6 UserEntity
 
 **Ubicación:** `lib/domain/entities/user_entity.dart`
 
@@ -150,7 +173,7 @@ Campos requeridos: `id`, `email`, `name`. Opcionales: `roleName`, `apellidoPater
 
 ---
 
-### 2.2.5 Casos de uso
+### 2.2.7 Casos de uso
 
 | Caso de uso | Dependencia | Firma `call` |
 |-------------|-------------|--------------|
@@ -176,7 +199,9 @@ Campos requeridos: `id`, `email`, `name`. Opcionales: `roleName`, `apellidoPater
 | cambiarContrasenaDesdeRecuperacion | `Future<void> cambiarContrasenaDesdeRecuperacion({...})` | `POST /api/login/cambiar/accesso` + Bearer token URL. |
 | remoteLogout | `Future<void> remoteLogout(String token)` | `POST /api/login/logout` + Bearer. Errores ignorados (logout optimista). |
 
-**Modelos:** `LoginTokensResponse`, `LoginMeResponse` → `UserModel` vía `toUserModel()`.
+**Modelos:** `LoginTokensResponse`, `LoginMeResponse` → `UserModel` vía `toUserModel(fallbackEmail:)`.
+
+**LoginMeResponse (GET /api/login/me):** objeto plano en raíz (compatibilidad con wrapper legacy `data`). Campos: `message?`, `id?`, `nombre`, `apellidoPaterno`, `apellidoMaterno`, `idCliente?`, `logotipo`, `ultimoLogin`, `fotoPerfil`, `telefono`, `userName`, `rol?` (`RolModel`), `permisos` (`List<PermisoPerfilModel>`).
 
 ---
 
@@ -223,7 +248,45 @@ Fuente remota Face Auth vía **BFF ShiftControl** (`baseUrl`). Usa `package:http
 
 ---
 
-### 2.3.5 PlateReadRemoteDatasource
+### 2.3.5 FaceAffiliationRemoteDatasource
+
+**Ubicación:** `lib/data/datasources/remote/face_affiliation_remote_datasource.dart`
+
+Fuente remota de afiliación facial vía **BFF ShiftControl** (`baseUrl`). Usa `package:http` directo (multipart y JSON). Bearer JWT de **sesión del operador** (`TokenStorageService`, normalizado).
+
+| Método | Firma | Contrato |
+|--------|--------|----------|
+| obtenerJwtSesion | `Future<String> obtenerJwtSesion()` | Access token de sesión; lanza `AuthException` si no hay sesión. |
+| validatePose | `Future<FaceAffiliationValidatePoseResult> validatePose({required int sampleIndex, required List<int> imageBytes, required String filename})` | `POST /api/embed/validate-pose?sample_index={1\|2\|3}` multipart `file`, Bearer sesión. → `valid`, `message?`. |
+| registrarRostro | `Future<FaceAffiliationResponse> registrarRostro({required FaceAffiliationRequest request})` | `POST /api/rostros` JSON `{ nombre, paterno, materno, telefono, embeddingsList }`, Bearer sesión. HTTP **409** → `NetworkException` (rostro ya registrado). |
+
+**Tipos:** `FaceAffiliationValidatePoseResult`, `FaceAffiliationRequest`, `FaceAffiliationResponse`.
+
+---
+
+### 2.3.6 AfiliarRostroOperadorDatasource
+
+**Ubicación:** `lib/data/datasources/remote/afiliar_rostro_operador_datasource.dart`
+
+| Método | Firma | Contrato |
+|--------|--------|----------|
+| obtenerOperadorActual | `Future<AfiliarRostroOperadorInfo> obtenerOperadorActual()` | `GET /api/login/me` vía `ApiClient` (Bearer automático). → `AfiliarRostroOperadorInfo.fromLoginMeJson`. |
+
+**AfiliarRostroOperadorInfo:** `idUsuario`, `nombre`, `apellidoPaterno`, `apellidoMaterno`, `telefono`.
+
+---
+
+### 2.3.7 AfiliarRostroRemoteDatasource (legacy)
+
+**Ubicación:** `lib/data/datasources/remote/afiliar_rostro_remote_datasource.dart`
+
+| Método | Firma | Contrato |
+|--------|--------|----------|
+| afiliar | `Future<AfiliarRostroResponse> afiliar({required AfiliarRostroRequest request})` | `POST /api/face-auth/enroll` multipart `foto1`/`foto2` + `idUsuario`. **No usado en UI actual** (flujo reemplazado por FaceAffiliation). |
+
+---
+
+### 2.3.8 PlateReadRemoteDatasource
 
 **Ubicación:** `lib/data/datasources/remote/plate_read_remote_datasource.dart`
 
@@ -235,7 +298,7 @@ Usa `AppEnvironmentConfig.baseUrl`.
 
 ---
 
-### 2.3.6 PlacasValidarRemoteDatasource
+### 2.3.9 PlacasValidarRemoteDatasource
 
 **Ubicación:** `lib/data/datasources/remote/placas_validar_remote_datasource.dart`
 
@@ -247,7 +310,7 @@ Usa `AppEnvironmentConfig.baseUrl`.
 
 ---
 
-### 2.3.7 ReportesRemoteDatasource
+### 2.3.10 ReportesRemoteDatasource
 
 **Ubicación:** `lib/data/datasources/remote/reportes_remote_datasource.dart`
 
@@ -257,7 +320,7 @@ Usa `AppEnvironmentConfig.baseUrl`.
 
 ---
 
-### 2.3.8 RegistroVehiculoRemoteDatasource
+### 2.3.11 RegistroVehiculoRemoteDatasource
 
 **Ubicación:** `lib/data/datasources/remote/registro_vehiculo_remote_datasource.dart`
 
@@ -280,7 +343,7 @@ Usa `AppEnvironmentConfig.baseUrl`.
 
 ---
 
-### 2.3.9 RegistroVehiculoRepositoryImpl
+### 2.3.12 RegistroVehiculoRepositoryImpl
 
 **Ubicación:** `lib/data/repositories/registro_vehiculo_repository_impl.dart`
 
@@ -288,7 +351,23 @@ Implementa `RegistroVehiculoRepository`. Delega en `RegistroVehiculoRemoteDataso
 
 ---
 
-### 2.3.10 TurnosService
+### 2.3.13 FaceAffiliationRepositoryImpl
+
+**Ubicación:** `lib/data/repositories/face_affiliation_repository_impl.dart`
+
+Implementa `FaceAffiliationRepository`. Delega en `FaceAffiliationService`.
+
+---
+
+### 2.3.14 AfiliarRostroRepositoryImpl
+
+**Ubicación:** `lib/data/repositories/afiliar_rostro_repository_impl.dart`
+
+Implementa `AfiliarRostroRepository`. `obtenerOperadorActual` vía `AfiliarRostroOperadorDatasource`; métodos legacy `validarCapturas` / `afiliarRostro` vía `AfiliarRostroService`.
+
+---
+
+### 2.3.15 TurnosService
 
 **Ubicación:** `lib/features/turnos/services/turnos_service.dart`
 
@@ -346,7 +425,7 @@ Estado: `AuthState(status, user, errorMessage)`. Estados: `initial`, `loading`, 
 
 ### 2.4.3 Providers (Riverpod)
 
-**Ubicación:** `lib/presentation/controllers/auth_controller.dart`, `mi_turno_provider.dart`, `reportes_provider.dart`, `registro_vehiculo_provider.dart`, `theme_controller.dart`
+**Ubicación:** `lib/presentation/controllers/auth_controller.dart`, `mi_turno_provider.dart`, `reportes_provider.dart`, `registro_vehiculo_provider.dart`, `afiliar_rostro_provider.dart`, `face_affiliation_provider.dart`, `theme_controller.dart`
 
 | Provider | Tipo | Contrato |
 |----------|------|----------|
@@ -374,6 +453,14 @@ Estado: `AuthState(status, user, errorMessage)`. Estados: `initial`, `loading`, 
 | registroVehiculoRemoteDatasourceProvider | `Provider<RegistroVehiculoRemoteDatasource>` | `RegistroVehiculoRemoteDatasourceImpl(apiClient)`. |
 | registroVehiculoRepositoryProvider | `Provider<RegistroVehiculoRepository>` | |
 | registroVehiculoEnviadoProvider | `StateProvider<RegistroVehiculoFormData?>` | Último registro exitoso en sesión. |
+| afiliarRostroOperadorDatasourceProvider | `Provider<AfiliarRostroOperadorDatasource>` | `AfiliarRostroOperadorDatasourceImpl(apiClient)`. |
+| afiliarRostroRemoteDatasourceProvider | `Provider<AfiliarRostroRemoteDatasource>` | Legacy enroll. |
+| afiliarRostroServiceProvider | `Provider<AfiliarRostroService>` | Legacy liveness + enroll. |
+| afiliarRostroRepositoryProvider | `Provider<AfiliarRostroRepository>` | Operador + métodos legacy. |
+| afiliarRostroOperadorProvider | `FutureProvider<AfiliarRostroOperadorInfo>` | Datos operador para Afiliar Rostro. |
+| faceAffiliationRemoteDatasourceProvider | `Provider<FaceAffiliationRemoteDatasource>` | validate-pose + POST /api/rostros. |
+| faceAffiliationServiceProvider | `Provider<FaceAffiliationService>` | Orquesta pose + embed + registro. |
+| faceAffiliationRepositoryProvider | `Provider<FaceAffiliationRepository>` | Usado por `FaceAffiliationCapturePage`. |
 | registroCombustibleProvider | — | Incidencia gasolina. |
 | reporteIncidenteSeleccionProvider / reporteIncidenteRegistradaProvider | — | Flujo incidente. |
 | reportesRemoteDatasourceProvider | `Provider<ReportesRemoteDatasource>` | |
@@ -395,6 +482,9 @@ Estado: `AuthState(status, user, errorMessage)`. Estados: `initial`, `loading`, 
 | Checklist apertura/cierre | Ver `ChecklistAperturaPasos` / `ChecklistCierrePasos` | 9 pasos; rutas `/inicio-turno`, `/captura-odometro`, … y `/cierre-*`. |
 | push | `IdentificarPlacaPage` | Desde inicio de turno (apertura) o registro de vehículo; OCR + validación; `onRegresar` opcional para pop con estado preservado. |
 | push | `RegistroVehiculoPage` | Desde menú lateral (`AppDrawer`); formulario de alta de placa. |
+| push | `AfiliarRostroPage` | Desde menú lateral (`AppDrawer`); afiliación facial del operador. |
+| push | `FaceAffiliationCapturePage` | Desde `AfiliarRostroPage`; orquesta 3 capturas + APIs. |
+| push | `FaceAffiliationSingleCapturePage` | Captura individual con delay post-instrucción (solo afiliación). |
 | push | `RegistroCombustiblePage` | `/registro-combustible` desde control de turnos. |
 | push | `ReporteIncidentePage` | `/reporte-incidente` desde control de turnos. |
 | Tab Historial | `HistorialTurnosPage` | Lista paginada por fecha. |
@@ -412,7 +502,8 @@ Estado: `AuthState(status, user, errorMessage)`. Estados: `initial`, `loading`, 
 | **Inicio de Turno (paso 1)** | Card vehículo/operador; placa validada vía `placaValidadaProvider`; Continuar solo con `registered == true`. **Mantiene** flecha de regreso y navegación back normal. |
 | **Pasos internos checklist** | `PopScope(canPop: false)` + `automaticallyImplyLeading: false` + `leadingWidth: AppConstants.appBarLeadingWidthWithoutBack`. Sin regreso a pasos anteriores (botón físico, gesto, AppBar). Pantallas: captura odómetro, indicadores, fluidos, luces, accesorios, documentación, inspección exterior (`RegistroDanosPage`), resumen. |
 | **Identificar placa** | `PopScope(canPop: false)`; si `onRegresar != null` muestra flecha AppBar y botón Regresar que hace pop a la pantalla origen. |
-| **Registro de vehículo** | Formulario independiente del checklist; campos placa/marca/modelo/año/color/económico; OCR vía `IdentificarPlacaPage`; año con `calendar_date_picker2` (solo año); `POST /api/placas`; botón Guardar vehículo con loading y validación de campos obligatorios; feedback `AppAlertBanner`. |
+| **Registro de vehículo** | Formulario independiente del checklist; campos placa/marca/modelo/año/color/económico; OCR vía `IdentificarPlacaPage`; **año con bottom sheet de lista dinámica** (`RegistroVehiculoAnioPicker.availableYears`, 1980 – año actual + 1); `POST /api/placas`; botón Guardar vehículo con loading y validación de campos obligatorios; feedback `AppAlertBanner`. |
+| **Afiliar Rostro** | `GET /api/login/me` → campos operador read-only; botón **Capturar rostro** → 3 capturas (`FaceAffiliationSingleCapturePage`, 3 s post-instrucción) → validate-pose + embed + `POST /api/rostros`; HTTP 409 → alerta info «Rostro registrado»; éxito → banner + botón deshabilitado. **No usa** `FaceAuthCapturePage` ni login facial. |
 | **Apertura de Turno** | Card: Placa, Económico, Año, Marca/Modelo desde provider. |
 | **Cierre de Turno** | Datos desde `placaValidadaProvider`; sin cámara de placa en paso 1. |
 | **Resumen de turno** | `informacionGeneralProvider`; etiqueta odómetro: **Odómetro Inicial** (apertura) / **Odómetro Final** (cierre) según `ChecklistType`; valor sin cambios desde API. Acción: `GradientSlideToAct`. Errores/éxito: `QuickAlert`. |
@@ -446,13 +537,30 @@ Estado: `AuthState(status, user, errorMessage)`. Estados: `initial`, `loading`, 
 | `numeroPlaca` | `String` | Campo placa (manual u OCR) |
 | `marca` | `String` | Campo marca |
 | `modelo` | `String` | Campo modelo |
-| `anio` | `String` | Selector de año (4 dígitos) |
+| `anio` | `String` | Selector de año (4 dígitos; bottom sheet lista dinámica) |
 | `color` | `String` | Campo color |
 | `numeroEconomico` | `String` | Campo número económico → API `economico` |
 
 **Colores UI:** `RegistroVehiculoColors` (`lib/presentation/turnos/registro_vehiculo/registro_vehiculo_colors.dart`).
 
-**Constantes selector año:** `RegistroVehiculoAnioPicker` — mínimo 1980, máximo año actual + 1.
+**Constantes selector año:** `RegistroVehiculoAnioPicker` — mínimo 1980, máximo año actual + 1; getter `availableYears` genera lista descendente dinámica.
+
+**Widget selector:** `_RegistroVehiculoAnioPickerSheet` (bottom sheet con `ListView`, año seleccionado resaltado).
+
+---
+
+### 2.4.8 Modelo de presentación — Afiliar Rostro
+
+**Ubicación:** `lib/presentation/afiliar_rostro/`
+
+| Elemento | Contrato |
+|----------|----------|
+| `AfiliarRostroPage` | Carga operador (`afiliarRostroOperadorProvider`); valida datos (nombre, apellidos, teléfono 10 dígitos); abre `FaceAffiliationCapturePage`. |
+| `FaceAffiliationCapturePage` | Orquesta 3 pasos (`sample_index` 1–3); por captura: validate-pose + embed; final: `POST /api/rostros`. |
+| `FaceAffiliationSingleCapturePage` | Cámara frontal, óvalo, instrucción fija, countdown **después** de mostrar mensaje (`secondsAfterInstruction`, default 3). |
+| `FaceAffiliationCaptureResult` | `exitoso(rostroId)` \| `conflictoRegistro(mensaje?)` para HTTP 409. |
+
+**Colores UI:** `AfiliarRostroColors` (`lib/presentation/afiliar_rostro/afiliar_rostro_colors.dart`).
 
 ---
 
@@ -478,7 +586,29 @@ Estado: `AuthState(status, user, errorMessage)`. Estados: `initial`, `loading`, 
 
 ---
 
-### 2.5.3 ProfileService
+### 2.5.3 FaceAffiliationService
+
+**Ubicación:** `lib/features/afiliar_rostro/services/face_affiliation_service.dart`
+
+| Método | Firma | Contrato |
+|--------|--------|----------|
+| validarPoseYGenerarEmbedding | `Future<List<double>> validarPoseYGenerarEmbedding({required int sampleIndex, required String filename, required List<int> imageBytes})` | validate-pose (sesión) → embed JWT servicio (`FaceAuthRemoteDatasource`) → embedding 512D. Lanza `AuthException` si pose inválida o embedding ≠ 512. |
+| registrarRostro | `Future<FaceAffiliationResponse> registrarRostro({required FaceAffiliationRequest request})` | Valida datos personales (teléfono 10 dígitos) y exactamente 3 embeddings de 512 → `POST /api/rostros`. |
+
+---
+
+### 2.5.4 AfiliarRostroService (legacy)
+
+**Ubicación:** `lib/features/afiliar_rostro/services/afiliar_rostro_service.dart`
+
+| Método | Firma | Contrato |
+|--------|--------|----------|
+| validarCapturas | `Future<void> validarCapturas({required Uint8List foto1, required Uint8List foto2})` | Liveness 2 fotos vía `FaceAuthRemoteDatasource`. **No usado en UI actual.** |
+| afiliarRostro | `Future<AfiliarRostroResponse> afiliarRostro({required String idUsuario, required Uint8List foto1, required Uint8List foto2})` | `POST /api/face-auth/enroll`. **No usado en UI actual.** |
+
+---
+
+### 2.5.5 ProfileService
 
 **Ubicación:** `lib/features/profile/services/profile_service.dart`
 
@@ -489,7 +619,7 @@ Estado: `AuthState(status, user, errorMessage)`. Estados: `initial`, `loading`, 
 
 ---
 
-### 2.5.4 ReportesService
+### 2.5.6 ReportesService
 
 **Ubicación:** `lib/features/reportes/services/reportes_service.dart`
 
@@ -499,7 +629,7 @@ Estado: `AuthState(status, user, errorMessage)`. Estados: `initial`, `loading`, 
 
 ---
 
-### 2.5.5 ChecklistProgressService
+### 2.5.7 ChecklistProgressService
 
 **Ubicación:** `lib/features/turnos/services/checklist_progress_service.dart`
 
@@ -558,6 +688,14 @@ Registro de vehículo:
     RegistroVehiculoPage → registroVehiculoRepositoryProvider → RegistroVehiculoRepositoryImpl
         → RegistroVehiculoRemoteDatasourceImpl → ApiClient (POST /api/placas)
     OCR placa: IdentificarPlacaPage → PlateReadRemoteDatasource (sin cambios)
+    Selector año: RegistroVehiculoAnioPicker.availableYears → _RegistroVehiculoAnioPickerSheet
+
+Afiliar Rostro (UI actual):
+    AfiliarRostroPage → afiliarRostroOperadorProvider → AfiliarRostroOperadorDatasource (GET /api/login/me)
+    Captura → FaceAffiliationCapturePage → faceAffiliationRepositoryProvider → FaceAffiliationService
+        → FaceAffiliationRemoteDatasource (validate-pose, POST /api/rostros)
+        → FaceAuthRemoteDatasource (POST /api/embed, JWT servicio)
+    Legacy (sin UI): AfiliarRostroService → AfiliarRostroRemoteDatasource (POST /api/face-auth/enroll)
 
 Refresh:
     HttpApiClient → RefreshTokenRunner (POST /api/login/refresh) → TokenStorageService

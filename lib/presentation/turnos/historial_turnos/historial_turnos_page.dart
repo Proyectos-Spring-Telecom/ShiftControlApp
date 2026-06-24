@@ -1,4 +1,5 @@
 import 'package:calendar_date_picker2/calendar_date_picker2.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -57,11 +58,13 @@ class _HistorialTurnosPageState extends ConsumerState<HistorialTurnosPage> {
   void initState() {
     super.initState();
     _searchController.addListener(() => setState(() {}));
+    _scrollController.addListener(_onScrollControllerChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) => _cargarInicial());
   }
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScrollControllerChanged);
     _scrollController.dispose();
     _searchController.dispose();
     super.dispose();
@@ -69,22 +72,43 @@ class _HistorialTurnosPageState extends ConsumerState<HistorialTurnosPage> {
 
   static const double _scrollPrefetchThreshold = 200;
 
+  void _onScrollControllerChanged() {
+    _evaluarCargaAlFinalDelScroll();
+  }
+
+  void _programarEvaluacionCargaAlFinal() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _evaluarCargaAlFinalDelScroll();
+    });
+  }
+
+  void _evaluarCargaAlFinalDelScroll() {
+    if (_modoRango || _isLoadingInitial || _isLoadingMore || !_hasMoreData) {
+      return;
+    }
+    if (!_scrollController.hasClients) return;
+
+    final position = _scrollController.position;
+    final cercaDelFinal =
+        position.pixels >= position.maxScrollExtent - _scrollPrefetchThreshold;
+    final contenidoCorto =
+        position.maxScrollExtent <= _scrollPrefetchThreshold;
+
+    if (cercaDelFinal || contenidoCorto) {
+      _cargarMasSiCorresponde();
+    }
+  }
+
   bool _onScrollNotification(ScrollNotification notification) {
     if (_modoRango || _isLoadingInitial || _isLoadingMore || !_hasMoreData) {
       return false;
     }
 
-    debugPrint('[Historial] scroll: ${notification.runtimeType}');
-
     if (notification is OverscrollNotification) {
       final metrics = notification.metrics;
       final enElFinal = metrics.pixels >= metrics.maxScrollExtent;
-      debugPrint(
-        '[Historial] overscroll=${notification.overscroll} '
-        'pixels=${metrics.pixels} max=${metrics.maxScrollExtent}',
-      );
       if (enElFinal && notification.overscroll < 0) {
-        debugPrint('[Historial] overscroll al final → cargar más');
         _cargarMasSiCorresponde();
       }
       return false;
@@ -92,24 +116,7 @@ class _HistorialTurnosPageState extends ConsumerState<HistorialTurnosPage> {
 
     if (notification is ScrollUpdateNotification ||
         notification is ScrollEndNotification) {
-      if (!_scrollController.hasClients) return false;
-
-      final position = _scrollController.position;
-      final cercaDelFinal = position.pixels >=
-          position.maxScrollExtent - _scrollPrefetchThreshold;
-      final contenidoCorto =
-          position.maxScrollExtent <= _scrollPrefetchThreshold;
-
-      debugPrint(
-        '[Historial] pixels=${position.pixels} '
-        'max=${position.maxScrollExtent} '
-        'cercaDelFinal=$cercaDelFinal contenidoCorto=$contenidoCorto',
-      );
-
-      if (cercaDelFinal || contenidoCorto) {
-        debugPrint('[Historial] cerca del final → cargar más');
-        _cargarMasSiCorresponde();
-      }
+      _evaluarCargaAlFinalDelScroll();
     }
 
     return false;
@@ -230,7 +237,10 @@ class _HistorialTurnosPageState extends ConsumerState<HistorialTurnosPage> {
       if (!mounted) return;
       setState(() => _errorMessage = 'No se pudo cargar el historial: $e');
     } finally {
-      if (mounted) setState(() => _isLoadingInitial = false);
+      if (mounted) {
+        setState(() => _isLoadingInitial = false);
+        _programarEvaluacionCargaAlFinal();
+      }
     }
   }
 
@@ -336,7 +346,10 @@ class _HistorialTurnosPageState extends ConsumerState<HistorialTurnosPage> {
         setState(() => _errorMessage = 'No se pudo cargar más turnos: $e');
       }
     } finally {
-      if (mounted) setState(() => _isLoadingMore = false);
+      if (mounted) {
+        setState(() => _isLoadingMore = false);
+        _programarEvaluacionCargaAlFinal();
+      }
     }
   }
 
@@ -546,7 +559,11 @@ class _HistorialTurnosPageState extends ConsumerState<HistorialTurnosPage> {
                     onNotification: _onScrollNotification,
                     child: ListView.builder(
                       controller: _scrollController,
-                      physics: const AlwaysScrollableScrollPhysics(),
+                      physics: AlwaysScrollableScrollPhysics(
+                        parent: kIsWeb
+                            ? const ClampingScrollPhysics()
+                            : const BouncingScrollPhysics(),
+                      ),
                       padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
                       itemCount: grupos.isEmpty
                           ? 1
@@ -571,7 +588,7 @@ class _HistorialTurnosPageState extends ConsumerState<HistorialTurnosPage> {
                                   ),
                                   const SizedBox(height: 8),
                                   Text(
-                                    'Desliza hacia abajo para buscar días anteriores',
+                                    'Desplázate hacia abajo para buscar días anteriores',
                                     textAlign: TextAlign.center,
                                     style: Theme.of(context)
                                         .textTheme

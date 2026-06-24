@@ -314,6 +314,6 @@ class FaceAuthRemoteDatasourceImpl implements FaceAuthRemoteDatasource {
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     final me = LoginMeResponse.fromJson(data);
-    return me.toUserModel(fallbackEmail: me.email ?? me.userName ?? '');
+    return me.toUserModel(fallbackEmail: me.userName);
   }
 }

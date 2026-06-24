@@ -8,6 +8,7 @@ import '../../settings/appearance_page.dart';
 import '../../turnos/control_turnos_page.dart';
 import '../../turnos/historial_turnos/historial_turnos_page.dart';
 import '../../turnos/registro_vehiculo/registro_vehiculo_page.dart';
+import '../../afiliar_rostro/afiliar_rostro_page.dart';
 
 class AppDrawer extends ConsumerWidget {
   const AppDrawer({
@@ -133,6 +134,18 @@ class AppDrawer extends ConsumerWidget {
               Navigator.of(context).push(
                 MaterialPageRoute<void>(
                   builder: (_) => const RegistroVehiculoPage(),
+                ),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.face_outlined),
+            title: const Text('Afiliar Rostro'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const AfiliarRostroPage(),
                 ),
               );
             },

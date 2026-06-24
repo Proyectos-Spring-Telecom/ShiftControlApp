@@ -21,10 +21,18 @@ class TokenStorageServiceImpl implements TokenStorageService {
 
   final SharedPreferences _prefs;
 
+  /// Elimina espacios/saltos de línea que invalidan el header `Bearer`.
+  static String normalizeToken(String token) {
+    return token.replaceAll(RegExp(r'\s+'), '');
+  }
+
   @override
   Future<void> saveToken(String token) async {
     try {
-      await _prefs.setString(AppConstants.keyAuthToken, token);
+      await _prefs.setString(
+        AppConstants.keyAuthToken,
+        normalizeToken(token),
+      );
     } catch (e) {
       throw StorageException('Error al guardar token: $e');
     }
@@ -32,13 +40,18 @@ class TokenStorageServiceImpl implements TokenStorageService {
 
   @override
   Future<String?> getToken() async {
-    return _prefs.getString(AppConstants.keyAuthToken);
+    final raw = _prefs.getString(AppConstants.keyAuthToken);
+    if (raw == null || raw.isEmpty) return null;
+    return normalizeToken(raw);
   }
 
   @override
   Future<void> saveRefreshToken(String refreshToken) async {
     try {
-      await _prefs.setString(AppConstants.keyRefreshToken, refreshToken);
+      await _prefs.setString(
+        AppConstants.keyRefreshToken,
+        normalizeToken(refreshToken),
+      );
     } catch (e) {
       throw StorageException('Error al guardar refresh token: $e');
     }
@@ -46,7 +59,9 @@ class TokenStorageServiceImpl implements TokenStorageService {
 
   @override
   Future<String?> getRefreshToken() async {
-    return _prefs.getString(AppConstants.keyRefreshToken);
+    final raw = _prefs.getString(AppConstants.keyRefreshToken);
+    if (raw == null || raw.isEmpty) return null;
+    return normalizeToken(raw);
   }
 
   @override

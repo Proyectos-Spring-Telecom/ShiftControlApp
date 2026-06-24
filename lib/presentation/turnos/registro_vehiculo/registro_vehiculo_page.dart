@@ -1,6 +1,5 @@
 import 'dart:typed_data';
 
-import 'package:calendar_date_picker2/calendar_date_picker2.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -21,9 +20,13 @@ abstract final class RegistroVehiculoAnioPicker {
 
   static int get maxYear => DateTime.now().year + 1;
 
-  static DateTime get firstDate => DateTime(minYear);
-
-  static DateTime get lastDate => DateTime(maxYear);
+  static List<int> get availableYears {
+    final years = <int>[];
+    for (var year = maxYear; year >= minYear; year--) {
+      years.add(year);
+    }
+    return years;
+  }
 }
 
 /// Pantalla de registro de vehículo alineada al diseño ShiftControl existente.
@@ -160,28 +163,20 @@ class _RegistroVehiculoPageState extends ConsumerState<RegistroVehiculoPage> {
             parsedYear >= RegistroVehiculoAnioPicker.minYear &&
             parsedYear <= RegistroVehiculoAnioPicker.maxYear)
         ? parsedYear
-        : DateTime.now().year;
+        : null;
 
-    final values = await showCalendarDatePicker2Dialog(
+    final selectedYear = await showModalBottomSheet<int>(
       context: context,
-      config: CalendarDatePicker2WithActionButtonsConfig(
-        calendarType: CalendarDatePicker2Type.single,
-        calendarViewMode: CalendarDatePicker2Mode.year,
-        firstDate: RegistroVehiculoAnioPicker.firstDate,
-        lastDate: RegistroVehiculoAnioPicker.lastDate,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _RegistroVehiculoAnioPickerSheet(
+        years: RegistroVehiculoAnioPicker.availableYears,
+        selectedYear: initialYear,
       ),
-      dialogSize: const Size(325, 400),
-      value: [DateTime(initialYear)],
-      dialogBackgroundColor: RegistroVehiculoColors.cardBackground(context),
-      borderRadius: BorderRadius.circular(12),
     );
 
-    if (!mounted || values == null) return;
+    if (!mounted || selectedYear == null) return;
 
-    final selected = values.whereType<DateTime>().firstOrNull;
-    if (selected == null) return;
-
-    _anioController.text = selected.year.toString();
+    _anioController.text = selectedYear.toString();
   }
 
   Future<void> _guardarRegistro() async {
@@ -257,7 +252,7 @@ class _RegistroVehiculoPageState extends ConsumerState<RegistroVehiculoPage> {
                 children: [
                   _buildInfoBox(context),
                   const SizedBox(height: 16),
-                  _buildSectionLabel(context, 'DATOS DEL VEHÍCULO'),
+                  _buildSectionLabel(context, 'Datos del vehículo'),
                   const SizedBox(height: 8),
                   _buildDatosVehiculoCard(context),
                 ],
@@ -602,6 +597,127 @@ class _FieldActionIconButton extends StatelessWidget {
                   ? RegistroVehiculoColors.textSecondary(context)
                   : RegistroVehiculoColors.progressFilled,
             ),
+    );
+  }
+}
+
+class _RegistroVehiculoAnioPickerSheet extends StatefulWidget {
+  const _RegistroVehiculoAnioPickerSheet({
+    required this.years,
+    this.selectedYear,
+  });
+
+  final List<int> years;
+  final int? selectedYear;
+
+  @override
+  State<_RegistroVehiculoAnioPickerSheet> createState() =>
+      _RegistroVehiculoAnioPickerSheetState();
+}
+
+class _RegistroVehiculoAnioPickerSheetState extends State<_RegistroVehiculoAnioPickerSheet> {
+  static const double _itemExtent = 56;
+
+  late final ScrollController _scrollController;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController();
+
+    final selectedYear = widget.selectedYear;
+    if (selectedYear != null) {
+      final index = widget.years.indexOf(selectedYear);
+      if (index >= 0) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!_scrollController.hasClients) return;
+          _scrollController.jumpTo(index * _itemExtent);
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final maxHeight = MediaQuery.sizeOf(context).height * 0.5;
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        child: Container(
+          constraints: BoxConstraints(maxHeight: maxHeight),
+          decoration: BoxDecoration(
+            color: RegistroVehiculoColors.cardBackground(context),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: RegistroVehiculoColors.outline(context)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Año',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: RegistroVehiculoColors.textPrimary(context),
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+                ),
+              ),
+              Flexible(
+                child: ListView.builder(
+                  controller: _scrollController,
+                  shrinkWrap: true,
+                  itemExtent: _itemExtent,
+                  itemCount: widget.years.length,
+                  itemBuilder: (context, index) {
+                    final year = widget.years[index];
+                    final isSelected = year == widget.selectedYear;
+
+                    return InkWell(
+                      onTap: () => Navigator.of(context).pop(year),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                year.toString(),
+                                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                      color: isSelected
+                                          ? RegistroVehiculoColors.progressFilled
+                                          : RegistroVehiculoColors.textPrimary(context),
+                                      fontWeight:
+                                          isSelected ? FontWeight.w600 : FontWeight.normal,
+                                    ),
+                              ),
+                            ),
+                            if (isSelected)
+                              Icon(
+                                Icons.check,
+                                size: 20,
+                                color: RegistroVehiculoColors.progressFilled,
+                              ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

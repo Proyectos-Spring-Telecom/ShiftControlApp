@@ -2,7 +2,7 @@
 
 ## 1.1 Descripción general
 
-**Turnos Spring** es una aplicación Flutter multiplataforma (Android, iOS, Web) para el control de turnos operativos. Permite autenticación (login con correo/contraseña, NIP y reconocimiento facial), flujos de apertura y cierre de turno (checklist, fotos de resguardo/tablero, odómetro, combustible, daños, reporte de incidentes), consulta de historial y detalle de turnos, envío de reportes por correo, y gestión de perfil y apariencia.
+**Turnos Spring** es una aplicación Flutter multiplataforma (Android, iOS, Web) para el control de turnos operativos. Permite autenticación (login con correo/contraseña, NIP y reconocimiento facial), flujos de apertura y cierre de turno (checklist, fotos de resguardo/tablero, odómetro, combustible, daños, reporte de incidentes), registro de vehículos (alta de placa vía `POST /api/placas`), consulta de historial y detalle de turnos, envío de reportes por correo, y gestión de perfil y apariencia.
 
 Toda la comunicación con el backend se realiza contra el **BFF ShiftControl** (`AppEnvironmentConfig.baseUrl`). No hay URLs separadas para BehaviorIQ ni hosts legacy (`spcode.ddns.net`, `faceauth.ddns.net`).
 
@@ -21,6 +21,7 @@ La solución sigue una **arquitectura en capas** (data / domain / presentation) 
 | Persistencia local | SharedPreferences (sesión, checklist, tema) |
 | Ubicación | `geolocator` (Face Auth, apertura/cierre de turno) |
 | Cámara / imágenes | `camera`, `image_picker`, `image` |
+| Fechas (selector año) | `calendar_date_picker2` (Registro de Vehículo) |
 | Temas | Material 3 (`AppTheme` light/dark, `ThemeController`) |
 | Plataformas | Android, iOS, Web (hash routing para deep links) |
 
@@ -41,12 +42,12 @@ lib/
 ├── data/
 │   ├── datasources/
 │   │   ├── local/          # AuthLocalDatasource
-│   │   └── remote/         # Auth, FaceAuth, PlateRead, PlacasValidar, Reportes
-│   ├── models/             # DTOs (UserModel, LoginTokensResponse, LoginMeResponse, etc.)
-│   └── repositories/       # AuthRepositoryImpl, ReportesRepositoryImpl
+│   │   └── remote/         # Auth, FaceAuth, PlateRead, PlacasValidar, Reportes, RegistroVehiculo
+│   ├── models/             # DTOs (UserModel, LoginTokensResponse, RegistroVehiculoRequest, etc.)
+│   └── repositories/       # AuthRepositoryImpl, ReportesRepositoryImpl, RegistroVehiculoRepositoryImpl
 ├── domain/
 │   ├── entities/           # UserEntity
-│   ├── repositories/       # AuthRepository, ReportesRepository
+│   ├── repositories/       # AuthRepository, ReportesRepository, RegistroVehiculoRepository
 │   └── usecases/           # Login, Logout, GetCurrentUser, CheckAuth
 ├── features/
 │   ├── auth/               # AuthService (login NIP), FaceAuthService
@@ -56,7 +57,7 @@ lib/
 │   ├── controllers/        # AuthController, ThemeController
 │   ├── auth/               # Login, recuperar/nueva contraseña, perfil, face_auth
 │   ├── home/               # MainShell, Drawer, bottom nav, tabs
-│   ├── turnos/             # Control, checklist apertura/cierre, historial, detalle, placa, incidentes
+│   ├── turnos/             # Control, checklist apertura/cierre, historial, detalle, placa, incidentes, registro vehículo
 │   ├── settings/           # Apariencia
 │   ├── widgets/            # AppAlertBanner, LoadingOverlay, ExpandableNetworkImage, etc.
 │   └── app_router.dart
@@ -173,7 +174,9 @@ Rutas de cierre con prefijo `/cierre-*` (definidas en `ChecklistCierrePasos`).
 - AppBar sin flecha: `automaticallyImplyLeading: false`.
 - Espaciado del título: `leadingWidth: AppConstants.appBarLeadingWidthWithoutBack` (56 px, equivalente al área del botón back).
 
-Pantallas con restricción: `IdentificarPlacaPage`, `CapturaOdometroPage`, `IndicadoresTestigoPage`, `NivelesFluidoPage`, `LucesVehiculoPage`, `AccesoriosPage`, `DocumentacionPage`, `RegistroDanosPage`, `ResumenTurnoPage`.
+Pantallas con restricción de no regreso en el checklist (pasos 2–9): `CapturaOdometroPage`, `IndicadoresTestigoPage`, `NivelesFluidoPage`, `LucesVehiculoPage`, `AccesoriosPage`, `DocumentacionPage`, `RegistroDanosPage`, `ResumenTurnoPage`.
+
+**`IdentificarPlacaPage`:** en el checklist aplica `PopScope(canPop: false)`; si se abre con callback `onRegresar` (desde Inicio de Turno o Registro de Vehículo), el botón **Regresar** del pie y la flecha del AppBar ejecutan `Navigator.pop` y conservan el formulario de la pantalla origen.
 
 **Resumen de turno (`ResumenTurnoPage`):**
 
@@ -203,12 +206,25 @@ Pantallas con restricción: `IdentificarPlacaPage`, `CapturaOdometroPage`, `Indi
 - **Validar placa:** `GET /api/placas/validar?numeroPlaca=...` (`PlacasValidarRemoteDatasource`)
 - **Estado global:** `placaValidadaProvider` (`StateProvider<PlacasValidarResult?>`)
 - **UI:** header con Folio/Fecha/Lugar; Continuar habilitado solo con `registered == true`; datos de vehículo en CapturaOdometro, Resumen, Control de Turnos
-- **Identificar placa:** cámara en vivo, captura automática, recorte; en paso interno del checklist aplica restricción de no regreso (`PopScope`)
+- **Identificar placa:** cámara en vivo, captura automática, recorte; navegación de retorno vía `onRegresar` cuando se abre desde flujos que lo proveen (Inicio de Turno, Registro de Vehículo)
+
+### Registro de vehículo
+
+- **Acceso:** menú lateral (`AppDrawer`) → `RegistroVehiculoPage` (push independiente del checklist).
+- **Formulario (6 campos):** número de placa, marca, modelo, año, color, número económico.
+- **OCR placa:** reutiliza `IdentificarPlacaPage` (mismo flujo que Inicio de Turno); `plate_number` prellena el campo placa; al regresar sin capturar se mantiene el estado del formulario.
+- **Selector de año:** `calendar_date_picker2` en modo diálogo (`showCalendarDatePicker2Dialog`, `CalendarDatePicker2Mode.year`); rango 1980 – año actual + 1; el campo muestra solo el año (ej. `2022`).
+- **API:** `POST /api/placas` vía `RegistroVehiculoRemoteDatasource` → `RegistroVehiculoRepository` (`ApiClient`, JWT automático).
+- **Body:** `{ numeroPlaca, marca, modelo, anio, color, economico }`.
+- **Respuesta exitosa:** `idPlaca`, `numeroPlaca`, `economico`; mensaje `AppAlertBanner`: «Vehículo registrado correctamente».
+- **Errores mapeados:** 400 → placa sin vehículo registrado; 409 → placa ya afiliada; 401 → sesión expirada; 500/503 → error genérico de registro.
+- **UI:** botones homologados al resto de la app (primario ancho completo, acciones secundarias con estilo de Detalle de Turno); loading en botón Guardar vehículo; validación de campos obligatorios antes de habilitar envío.
+- **Providers:** `registroVehiculoRepositoryProvider`, `registroVehiculoEnviadoProvider` (último formulario enviado en sesión).
 
 ### Home y shell principal
 
 - **HomeTab:** pantalla de bienvenida con botón «Comenzar» → tab Turnos / `ControlTurnosPage`.
-- **MainShell:** bottom navigation (Inicio, Turnos, Historial, Perfil), drawer, navigator anidado para checklist y rutas auxiliares (combustible, incidente).
+- **MainShell:** bottom navigation (Inicio, Turnos, Historial, Perfil), drawer (incluye acceso a Registro de Vehículo), navigator anidado para checklist y rutas auxiliares (combustible, incidente).
 
 ### Feedback visual (banners)
 
@@ -274,6 +290,6 @@ Auth:     POST /api/login, GET /api/login/me, POST /api/login/refresh
 Face:     POST /api/embed/liveness-check, POST /api/embed, POST /api/auth/validateFace
 Turnos:   /api/turnos/*, /api/bitacora-vehicular/informacion-general
           /api/ubicacion/reverse, /api/turnos/incidencias/*
-Placas:   POST /api/plate/read, GET /api/placas/validar
+Placas:   POST /api/plate/read, GET /api/placas/validar, POST /api/placas
 Reportes: POST /api/reportes/turno/{id}/enviar
 ```

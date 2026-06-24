@@ -132,7 +132,17 @@ Claves de persistencia estables: `keyAuthToken`, `keyRefreshToken`, `keyTokenExp
 
 ---
 
-### 2.2.3 UserEntity
+### 2.2.3 RegistroVehiculoRepository
+
+**Ubicación:** `lib/domain/repositories/registro_vehiculo_repository.dart`
+
+| Método | Firma | Comportamiento |
+|--------|--------|----------------|
+| registrar | `Future<RegistroVehiculoResponse> registrar({required RegistroVehiculoRequest request})` | Delega en datasource remoto; registra placa en ShiftControl / BehaviorIQ. |
+
+---
+
+### 2.2.4 UserEntity
 
 **Ubicación:** `lib/domain/entities/user_entity.dart`
 
@@ -140,7 +150,7 @@ Campos requeridos: `id`, `email`, `name`. Opcionales: `roleName`, `apellidoPater
 
 ---
 
-### 2.2.4 Casos de uso
+### 2.2.5 Casos de uso
 
 | Caso de uso | Dependencia | Firma `call` |
 |-------------|-------------|--------------|
@@ -247,7 +257,38 @@ Usa `AppEnvironmentConfig.baseUrl`.
 
 ---
 
-### 2.3.8 TurnosService
+### 2.3.8 RegistroVehiculoRemoteDatasource
+
+**Ubicación:** `lib/data/datasources/remote/registro_vehiculo_remote_datasource.dart`
+
+| Método | Firma | Contrato |
+|--------|--------|----------|
+| registrar | `Future<RegistroVehiculoResponse> registrar({required RegistroVehiculoRequest request})` | `POST /api/placas` vía `ApiClient`. Body JSON (ver `RegistroVehiculoRequest.toJson()`). Bearer JWT automático. |
+
+**Request (`RegistroVehiculoRequest`):** `numeroPlaca`, `marca`, `modelo`, `anio` (int), `color`, `economico` (mapeo desde número económico en UI).
+
+**Response (`RegistroVehiculoResponse`):** `idPlaca`, `numeroPlaca`, `economico`.
+
+**Errores mapeados en datasource:**
+
+| Código HTTP | Excepción | Mensaje UI |
+|-------------|-----------|------------|
+| 400 | `NetworkException` | No existe un vehículo registrado para esta placa. |
+| 401 | `AuthException` | Tu sesión ha expirado. |
+| 409 | `NetworkException` | La placa ya se encuentra afiliada. |
+| 500 / 503 | `NetworkException` | No fue posible registrar el vehículo. Intenta nuevamente. |
+
+---
+
+### 2.3.9 RegistroVehiculoRepositoryImpl
+
+**Ubicación:** `lib/data/repositories/registro_vehiculo_repository_impl.dart`
+
+Implementa `RegistroVehiculoRepository`. Delega en `RegistroVehiculoRemoteDatasource`.
+
+---
+
+### 2.3.10 TurnosService
 
 **Ubicación:** `lib/features/turnos/services/turnos_service.dart`
 
@@ -305,7 +346,7 @@ Estado: `AuthState(status, user, errorMessage)`. Estados: `initial`, `loading`, 
 
 ### 2.4.3 Providers (Riverpod)
 
-**Ubicación:** `lib/presentation/controllers/auth_controller.dart`, `mi_turno_provider.dart`, `reportes_provider.dart`, `theme_controller.dart`
+**Ubicación:** `lib/presentation/controllers/auth_controller.dart`, `mi_turno_provider.dart`, `reportes_provider.dart`, `registro_vehiculo_provider.dart`, `theme_controller.dart`
 
 | Provider | Tipo | Contrato |
 |----------|------|----------|
@@ -330,6 +371,9 @@ Estado: `AuthState(status, user, errorMessage)`. Estados: `initial`, `loading`, 
 | turnoDetalleProvider | `FutureProvider.family` | Detalle por `idTurno`. |
 | informacionGeneralProvider | `FutureProvider` | Resumen bitácora. |
 | checklistProgressServiceProvider | `Provider<ChecklistProgressService>` | |
+| registroVehiculoRemoteDatasourceProvider | `Provider<RegistroVehiculoRemoteDatasource>` | `RegistroVehiculoRemoteDatasourceImpl(apiClient)`. |
+| registroVehiculoRepositoryProvider | `Provider<RegistroVehiculoRepository>` | |
+| registroVehiculoEnviadoProvider | `StateProvider<RegistroVehiculoFormData?>` | Último registro exitoso en sesión. |
 | registroCombustibleProvider | — | Incidencia gasolina. |
 | reporteIncidenteSeleccionProvider / reporteIncidenteRegistradaProvider | — | Flujo incidente. |
 | reportesRemoteDatasourceProvider | `Provider<ReportesRemoteDatasource>` | |
@@ -349,7 +393,8 @@ Estado: `AuthState(status, user, errorMessage)`. Estados: `initial`, `loading`, 
 | `/nueva-contrasena?token=` | `NuevaContrasenaPage` | Deep link web. |
 | Tab Turnos | `ControlTurnosPage` | Navigator anidado para checklist; retomar progreso incompleto. |
 | Checklist apertura/cierre | Ver `ChecklistAperturaPasos` / `ChecklistCierrePasos` | 9 pasos; rutas `/inicio-turno`, `/captura-odometro`, … y `/cierre-*`. |
-| push | `IdentificarPlacaPage` | Desde inicio de turno (apertura); OCR + validación. |
+| push | `IdentificarPlacaPage` | Desde inicio de turno (apertura) o registro de vehículo; OCR + validación; `onRegresar` opcional para pop con estado preservado. |
+| push | `RegistroVehiculoPage` | Desde menú lateral (`AppDrawer`); formulario de alta de placa. |
 | push | `RegistroCombustiblePage` | `/registro-combustible` desde control de turnos. |
 | push | `ReporteIncidentePage` | `/reporte-incidente` desde control de turnos. |
 | Tab Historial | `HistorialTurnosPage` | Lista paginada por fecha. |
@@ -365,7 +410,9 @@ Estado: `AuthState(status, user, errorMessage)`. Estados: `initial`, `loading`, 
 |------------------|------------|
 | **Face Auth** | Captura doble automática; loading "Verificando tu identidad" / "Analizando...."; éxito con banner; **cualquier error** → banner + `pushNamedAndRemoveUntil(login)`. Embedding solo vía backend (`captura2` → `/api/embed`). |
 | **Inicio de Turno (paso 1)** | Card vehículo/operador; placa validada vía `placaValidadaProvider`; Continuar solo con `registered == true`. **Mantiene** flecha de regreso y navegación back normal. |
-| **Pasos internos checklist** | `PopScope(canPop: false)` + `automaticallyImplyLeading: false` + `leadingWidth: AppConstants.appBarLeadingWidthWithoutBack`. Sin regreso a pasos anteriores (botón físico, gesto, AppBar). Pantallas: identificar placa, captura odómetro, indicadores, fluidos, luces, accesorios, documentación, inspección exterior (`RegistroDanosPage`), resumen. |
+| **Pasos internos checklist** | `PopScope(canPop: false)` + `automaticallyImplyLeading: false` + `leadingWidth: AppConstants.appBarLeadingWidthWithoutBack`. Sin regreso a pasos anteriores (botón físico, gesto, AppBar). Pantallas: captura odómetro, indicadores, fluidos, luces, accesorios, documentación, inspección exterior (`RegistroDanosPage`), resumen. |
+| **Identificar placa** | `PopScope(canPop: false)`; si `onRegresar != null` muestra flecha AppBar y botón Regresar que hace pop a la pantalla origen. |
+| **Registro de vehículo** | Formulario independiente del checklist; campos placa/marca/modelo/año/color/económico; OCR vía `IdentificarPlacaPage`; año con `calendar_date_picker2` (solo año); `POST /api/placas`; botón Guardar vehículo con loading y validación de campos obligatorios; feedback `AppAlertBanner`. |
 | **Apertura de Turno** | Card: Placa, Económico, Año, Marca/Modelo desde provider. |
 | **Cierre de Turno** | Datos desde `placaValidadaProvider`; sin cámara de placa en paso 1. |
 | **Resumen de turno** | `informacionGeneralProvider`; etiqueta odómetro: **Odómetro Inicial** (apertura) / **Odómetro Final** (cierre) según `ChecklistType`; valor sin cambios desde API. Acción: `GradientSlideToAct`. Errores/éxito: `QuickAlert`. |
@@ -387,6 +434,25 @@ Estado: `AuthState(status, user, errorMessage)`. Estados: `initial`, `loading`, 
 | `CustomTextField` | Campos de texto estilizados. |
 | `ExpandableNetworkImage` | Imagen remota expandible con loading. |
 | `CapturedEvidenceImage` / `NetworkImagePreview` | Evidencias en checklist. |
+
+---
+
+### 2.4.7 Modelo de presentación — Registro de vehículo
+
+**Ubicación:** `lib/presentation/turnos/registro_vehiculo/models/registro_vehiculo_form_data.dart`
+
+| Campo | Tipo | Origen UI |
+|-------|------|-----------|
+| `numeroPlaca` | `String` | Campo placa (manual u OCR) |
+| `marca` | `String` | Campo marca |
+| `modelo` | `String` | Campo modelo |
+| `anio` | `String` | Selector de año (4 dígitos) |
+| `color` | `String` | Campo color |
+| `numeroEconomico` | `String` | Campo número económico → API `economico` |
+
+**Colores UI:** `RegistroVehiculoColors` (`lib/presentation/turnos/registro_vehiculo/registro_vehiculo_colors.dart`).
+
+**Constantes selector año:** `RegistroVehiculoAnioPicker` — mínimo 1980, máximo año actual + 1.
 
 ---
 
@@ -487,6 +553,11 @@ Turnos:
 
 Reportes:
     DetalleTurnoPage → ReportesService → ReportesRepository → ReportesRemoteDatasource → ApiClient
+
+Registro de vehículo:
+    RegistroVehiculoPage → registroVehiculoRepositoryProvider → RegistroVehiculoRepositoryImpl
+        → RegistroVehiculoRemoteDatasourceImpl → ApiClient (POST /api/placas)
+    OCR placa: IdentificarPlacaPage → PlateReadRemoteDatasource (sin cambios)
 
 Refresh:
     HttpApiClient → RefreshTokenRunner (POST /api/login/refresh) → TokenStorageService

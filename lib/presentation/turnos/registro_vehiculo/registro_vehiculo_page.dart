@@ -36,7 +36,8 @@ class RegistroVehiculoPage extends ConsumerStatefulWidget {
 
 class _RegistroVehiculoPageState extends ConsumerState<RegistroVehiculoPage> {
   late final TextEditingController _numeroPlacaController;
-  late final TextEditingController _marcaModeloController;
+  late final TextEditingController _marcaController;
+  late final TextEditingController _modeloController;
   late final TextEditingController _anioController;
   late final TextEditingController _colorController;
   late final TextEditingController _numeroEconomicoController;
@@ -47,7 +48,8 @@ class _RegistroVehiculoPageState extends ConsumerState<RegistroVehiculoPage> {
   bool get _puedeGuardar {
     if (_guardando || _capturandoPlaca) return false;
     if (_numeroPlacaController.text.trim().isEmpty) return false;
-    if (_marcaModeloController.text.trim().isEmpty) return false;
+    if (_marcaController.text.trim().isEmpty) return false;
+    if (_modeloController.text.trim().isEmpty) return false;
     if (_anioController.text.trim().length != 4) return false;
     if (_colorController.text.trim().isEmpty) return false;
     if (_numeroEconomicoController.text.trim().isEmpty) return false;
@@ -58,14 +60,16 @@ class _RegistroVehiculoPageState extends ConsumerState<RegistroVehiculoPage> {
   void initState() {
     super.initState();
     _numeroPlacaController = TextEditingController();
-    _marcaModeloController = TextEditingController();
+    _marcaController = TextEditingController();
+    _modeloController = TextEditingController();
     _anioController = TextEditingController();
     _colorController = TextEditingController();
     _numeroEconomicoController = TextEditingController();
 
     for (final c in [
       _numeroPlacaController,
-      _marcaModeloController,
+      _marcaController,
+      _modeloController,
       _anioController,
       _colorController,
       _numeroEconomicoController,
@@ -82,7 +86,8 @@ class _RegistroVehiculoPageState extends ConsumerState<RegistroVehiculoPage> {
   void dispose() {
     for (final c in [
       _numeroPlacaController,
-      _marcaModeloController,
+      _marcaController,
+      _modeloController,
       _anioController,
       _colorController,
       _numeroEconomicoController,
@@ -96,7 +101,8 @@ class _RegistroVehiculoPageState extends ConsumerState<RegistroVehiculoPage> {
   RegistroVehiculoFormData _construirFormData() {
     return RegistroVehiculoFormData(
       numeroPlaca: _numeroPlacaController.text.trim(),
-      marcaModelo: _marcaModeloController.text.trim(),
+      marca: _marcaController.text.trim(),
+      modelo: _modeloController.text.trim(),
       anio: _anioController.text.trim(),
       color: _colorController.text.trim(),
       numeroEconomico: _numeroEconomicoController.text.trim(),
@@ -106,7 +112,8 @@ class _RegistroVehiculoPageState extends ConsumerState<RegistroVehiculoPage> {
   RegistroVehiculoRequest _construirRequest(RegistroVehiculoFormData data) {
     return RegistroVehiculoRequest(
       numeroPlaca: data.numeroPlaca,
-      marcaModelo: data.marcaModelo,
+      marca: data.marca,
+      modelo: data.modelo,
       anio: int.parse(data.anio),
       color: data.color,
       numeroEconomico: data.numeroEconomico,
@@ -197,8 +204,12 @@ class _RegistroVehiculoPageState extends ConsumerState<RegistroVehiculoPage> {
       if (!mounted) return;
       setState(() => _guardando = false);
       ref.read(registroVehiculoEnviadoProvider.notifier).state = formData;
-      showAppAlertSuccess(context, message: 'Registro de vehículo guardado correctamente.');
+      showAppAlertSuccess(context, message: 'Vehículo registrado correctamente');
       Navigator.of(context).pop(formData);
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      setState(() => _guardando = false);
+      showAppAlertError(context, message: e.message);
     } on NetworkException catch (e) {
       if (!mounted) return;
       setState(() => _guardando = false);
@@ -206,7 +217,10 @@ class _RegistroVehiculoPageState extends ConsumerState<RegistroVehiculoPage> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _guardando = false);
-      showAppAlertError(context, message: 'No fue posible guardar el registro de vehículo: $e');
+      showAppAlertError(
+        context,
+        message: 'No fue posible registrar el vehículo.\nIntenta nuevamente.',
+      );
     }
   }
 
@@ -321,10 +335,18 @@ class _RegistroVehiculoPageState extends ConsumerState<RegistroVehiculoPage> {
           const SizedBox(height: 8),
           _buildTextField(
             context,
-            label: 'Marca y modelo',
-            controller: _marcaModeloController,
+            label: 'Marca',
+            controller: _marcaController,
+            leadingIcon: Icons.label_outlined,
+            hint: 'Ej: Ford',
+          ),
+          const SizedBox(height: 8),
+          _buildTextField(
+            context,
+            label: 'Modelo',
+            controller: _modeloController,
             leadingIcon: Icons.directions_car_outlined,
-            hint: 'Ej: Ford Transit',
+            hint: 'Ej: Transit',
           ),
           const SizedBox(height: 8),
           _buildAnioField(context),

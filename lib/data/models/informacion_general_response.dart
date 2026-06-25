@@ -41,7 +41,8 @@ class InformacionGeneral {
         json['operador'] as Map<String, dynamic>? ?? {},
       ),
       estadoVehiculo: estadoList
-          .map((e) => EstadoVehiculoItem.fromJson(e as Map<String, dynamic>))
+          .whereType<Map<String, dynamic>>()
+          .map(EstadoVehiculoItem.fromJson)
           .toList(),
       metricasIniciales: metricasList
           .map((e) => MetricaInicialItem.fromJson(e as Map<String, dynamic>))
@@ -94,10 +95,16 @@ class EstadoVehiculoItem {
   final String? etiqueta;
   final String? valor;
 
+  static String? _coerceString(dynamic value) {
+    if (value == null) return null;
+    if (value is String) return value;
+    return value.toString();
+  }
+
   factory EstadoVehiculoItem.fromJson(Map<String, dynamic> json) {
     return EstadoVehiculoItem(
-      etiqueta: json['etiqueta'] as String?,
-      valor: json['valor'] as String?,
+      etiqueta: _coerceString(json['etiqueta']),
+      valor: _coerceString(json['valor']),
     );
   }
 }

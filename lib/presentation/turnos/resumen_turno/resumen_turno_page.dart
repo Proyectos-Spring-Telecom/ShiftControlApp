@@ -269,24 +269,7 @@ class _ResumenTurnoPageState extends ConsumerState<ResumenTurnoPage> {
             );
           }
           return Column(
-            children: [
-              for (int i = 0; i < items.length; i++) ...[
-                _buildEstadoVehiculoRow(
-                  context,
-                  label: items[i].etiqueta ?? '—',
-                  value: items[i].valor ?? '—',
-                ),
-                if (i < items.length - 1)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    child: Divider(
-                      color: ResumenTurnoColors.textSecondary(context).withValues(alpha: 0.4),
-                      height: 1,
-                      thickness: 1,
-                    ),
-                  ),
-              ],
-            ],
+            children: _buildEstadoVehiculoRows(context, items),
           );
         },
         loading: () => const Center(
@@ -312,6 +295,30 @@ class _ResumenTurnoPageState extends ConsumerState<ResumenTurnoPage> {
       return error.message;
     }
     return 'No se pudo cargar la información.';
+  }
+
+  List<Widget> _buildEstadoVehiculoRows(
+    BuildContext context,
+    List<EstadoVehiculoItem> items,
+  ) {
+    return [
+      for (var i = 0; i < items.length; i++) ...[
+        _buildEstadoVehiculoRow(
+          context,
+          label: items[i].etiqueta ?? '—',
+          value: items[i].valor ?? '—',
+        ),
+        if (i < items.length - 1)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Divider(
+              color: ResumenTurnoColors.textSecondary(context).withValues(alpha: 0.4),
+              height: 1,
+              thickness: 1,
+            ),
+          ),
+      ],
+    ];
   }
 
   Widget _buildEstadoVehiculoRow(BuildContext context, {required String label, required String value}) {

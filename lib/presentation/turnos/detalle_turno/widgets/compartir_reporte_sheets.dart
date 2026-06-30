@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../../core/errors/app_exception.dart';
+import '../../../../core/utils/save_bytes_to_temp_file.dart';
 import '../../../../core/utils/validators.dart';
 import '../../../widgets/app_alert_banner.dart';
 import '../../historial_turnos/historial_turnos_colors.dart';
@@ -11,25 +13,12 @@ import '../reportes_provider.dart';
 void showCompartirReporteOpciones(
   BuildContext context, {
   required int turnoId,
-  required VoidCallback onCompartir,
 }) {
   showModalBottomSheet<void>(
     context: context,
     backgroundColor: Colors.transparent,
     isScrollControlled: true,
-    builder: (sheetContext) => _CompartirReporteOpcionesSheet(
-      onCompartir: () {
-        Navigator.of(sheetContext).pop();
-        onCompartir();
-      },
-      onEnviarCorreo: () {
-        Navigator.of(sheetContext).pop();
-        showEnviarReporteEmailSheet(
-          context,
-          turnoId: turnoId,
-        );
-      },
-    ),
+    builder: (sheetContext) => _CompartirReporteOpcionesSheet(turnoId: turnoId),
   );
 }
 
@@ -50,14 +39,69 @@ void showEnviarReporteEmailSheet(
   );
 }
 
-class _CompartirReporteOpcionesSheet extends StatelessWidget {
-  const _CompartirReporteOpcionesSheet({
-    required this.onCompartir,
-    required this.onEnviarCorreo,
-  });
+class _CompartirReporteOpcionesSheet extends ConsumerStatefulWidget {
+  const _CompartirReporteOpcionesSheet({required this.turnoId});
 
-  final VoidCallback onCompartir;
-  final VoidCallback onEnviarCorreo;
+  final int turnoId;
+
+  @override
+  ConsumerState<_CompartirReporteOpcionesSheet> createState() =>
+      _CompartirReporteOpcionesSheetState();
+}
+
+class _CompartirReporteOpcionesSheetState
+    extends ConsumerState<_CompartirReporteOpcionesSheet> {
+  bool _compartiendo = false;
+
+  Future<void> _compartirPdf() async {
+    if (_compartiendo) return;
+
+    setState(() => _compartiendo = true);
+
+    try {
+      final pdf = await ref.read(reportesServiceProvider).descargarReporteTurnoPdf(
+            turnoId: widget.turnoId,
+          );
+
+      final xFile = await saveBytesToTempFile(
+        bytes: pdf.bytes,
+        fileName: pdf.fileName,
+        mimeType: 'application/pdf',
+      );
+
+      if (!mounted) return;
+
+      Navigator.of(context).pop();
+      await Share.shareXFiles(
+        [xFile],
+        subject: 'Reporte de turno',
+      );
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      setState(() => _compartiendo = false);
+      showAppAlertError(context, message: e.message);
+    } on NetworkException catch (e) {
+      if (!mounted) return;
+      setState(() => _compartiendo = false);
+      showAppAlertError(context, message: e.message);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _compartiendo = false);
+      showAppAlertError(
+        context,
+        message: 'No fue posible compartir el reporte.',
+      );
+    }
+  }
+
+  void _abrirEnviarCorreo() {
+    if (_compartiendo) return;
+    Navigator.of(context).pop();
+    showEnviarReporteEmailSheet(
+      context,
+      turnoId: widget.turnoId,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -96,13 +140,14 @@ class _CompartirReporteOpcionesSheet extends StatelessWidget {
             _SheetActionButton(
               label: 'Compartir',
               icon: Icons.share_outlined,
-              onPressed: onCompartir,
+              isLoading: _compartiendo,
+              onPressed: _compartiendo ? null : _compartirPdf,
             ),
             const SizedBox(height: 12),
             _SheetActionButton(
               label: 'Enviar por correo',
               icon: Icons.email_outlined,
-              onPressed: onEnviarCorreo,
+              onPressed: _compartiendo ? null : _abrirEnviarCorreo,
             ),
           ],
         ),
@@ -355,11 +400,13 @@ class _SheetActionButton extends StatelessWidget {
     required this.label,
     required this.icon,
     required this.onPressed,
+    this.isLoading = false,
   });
 
   final String label;
   final IconData icon;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
+  final bool isLoading;
 
   @override
   Widget build(BuildContext context) {
@@ -367,7 +414,16 @@ class _SheetActionButton extends StatelessWidget {
       width: double.infinity,
       child: ElevatedButton.icon(
         onPressed: onPressed,
-        icon: Icon(icon, size: 20),
+        icon: isLoading
+            ? SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: HistorialTurnosColors.textPrimary(context),
+                ),
+              )
+            : Icon(icon, size: 20),
         label: Text(label),
         style: ElevatedButton.styleFrom(
           backgroundColor: HistorialTurnosColors.background(context),

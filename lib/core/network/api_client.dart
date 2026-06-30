@@ -2,6 +2,7 @@
 /// Implementar con dio o http cuando se conecte a API real.
 abstract interface class ApiClient {
   Future<Map<String, dynamic>> get(String path, {Map<String, String>? headers});
+  Future<ApiBinaryResponse> getBytes(String path, {Map<String, String>? headers});
   Future<Map<String, dynamic>> post(
     String path, {
     dynamic body,
@@ -18,4 +19,15 @@ abstract interface class ApiClient {
     Map<String, String>? headers,
   });
   Future<Map<String, dynamic>> delete(String path, {Map<String, String>? headers});
+}
+
+/// Respuesta binaria HTTP (PDF, imágenes, etc.).
+class ApiBinaryResponse {
+  const ApiBinaryResponse({
+    required this.bytes,
+    required this.headers,
+  });
+
+  final List<int> bytes;
+  final Map<String, String> headers;
 }

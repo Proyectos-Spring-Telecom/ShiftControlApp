@@ -282,12 +282,8 @@ class _DetalleTurnoPageState extends ConsumerState<DetalleTurnoPage> {
     showCompartirReporteOpciones(
       context,
       turnoId: widget.idTurno,
-      onCompartir: _compartirReporte,
     );
   }
-
-  /// Comportamiento actual de compartir (sin cambios).
-  void _compartirReporte() {}
 
   @override
   Widget build(BuildContext context) {

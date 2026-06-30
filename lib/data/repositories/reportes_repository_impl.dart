@@ -1,4 +1,5 @@
 import '../../data/models/enviar_reporte_turno_response.dart';
+import '../../data/models/reporte_turno_pdf_result.dart';
 import '../../domain/repositories/reportes_repository.dart';
 import '../datasources/remote/reportes_remote_datasource.dart';
 
@@ -19,5 +20,12 @@ class ReportesRepositoryImpl implements ReportesRepository {
       asunto: asunto,
     );
     return EnviarReporteTurnoResponse.fromJson(data);
+  }
+
+  @override
+  Future<ReporteTurnoPdfResult> descargarReporteTurnoPdf({
+    required int turnoId,
+  }) {
+    return _remote.descargarReporteTurnoPdf(turnoId: turnoId);
   }
 }

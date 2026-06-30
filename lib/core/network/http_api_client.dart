@@ -192,6 +192,46 @@ class HttpApiClient implements ApiClient {
   }
 
   @override
+  Future<ApiBinaryResponse> getBytes(
+    String path, {
+    Map<String, String>? headers,
+  }) async {
+    final useAuth = !_shouldSkipAutoBearer(path);
+    final binaryHeaders = <String, String>{
+      'Accept': 'application/pdf',
+      if (headers != null) ...headers,
+    };
+    var h = await _headers(extra: binaryHeaders, useAuth: useAuth);
+    h.remove('Content-Type');
+    var response = await http.get(_uri(path), headers: h);
+
+    if ((response.statusCode == 401 || response.statusCode == 403) &&
+        useAuth &&
+        refreshToken != null) {
+      try {
+        final newToken = await _doRefresh();
+        if (newToken != null && newToken.isNotEmpty) {
+          debugPrint('Reintentando request original (GET bytes)');
+          h = await _headers(extra: binaryHeaders, useAuth: true);
+          h.remove('Content-Type');
+          response = await http.get(_uri(path), headers: h);
+        } else {
+          _triggerSessionExpired();
+        }
+      } on AuthException {
+        _triggerSessionExpired();
+        rethrow;
+      }
+    }
+
+    _handleResponse(response, path: path);
+    return ApiBinaryResponse(
+      bytes: response.bodyBytes,
+      headers: response.headers,
+    );
+  }
+
+  @override
   Future<Map<String, dynamic>> post(
     String path, {
     dynamic body,

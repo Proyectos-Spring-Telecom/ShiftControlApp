@@ -42,6 +42,7 @@ dependencies:
   http_parser: ^4.0.0
   image: ^4.1.7
   path_provider: ^2.1.4
+  share_plus: ^10.1.4
   geolocator: ^13.0.2
   calendar_date_picker2: ^3.0.0
 

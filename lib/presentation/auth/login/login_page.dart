@@ -239,8 +239,14 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                           child: ElevatedButton(
                             onPressed: _onFaceAuthTap,
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: LoginColors.button,
-                              foregroundColor: Colors.white,
+                              backgroundColor: LoginColors.buttonOutlineBackground(context),
+                              foregroundColor: LoginColors.buttonOutlineForeground(context),
+                              surfaceTintColor: Colors.transparent,
+                              elevation: 0,
+                              side: BorderSide(
+                                color: LoginColors.buttonOutlineForeground(context),
+                                width: 1,
+                              ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),
@@ -255,14 +261,8 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                           child: ElevatedButton(
                             onPressed: _submit,
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: LoginColors.buttonOutlineBackground(context),
-                              foregroundColor: LoginColors.buttonOutlineForeground(context),
-                              surfaceTintColor: Colors.transparent,
-                              elevation: 0,
-                              side: BorderSide(
-                                color: LoginColors.buttonOutlineForeground(context),
-                                width: 1,
-                              ),
+                              backgroundColor: LoginColors.button,
+                              foregroundColor: Colors.white,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),

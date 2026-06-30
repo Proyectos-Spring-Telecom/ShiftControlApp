@@ -1,4 +1,5 @@
 import '../../data/models/enviar_reporte_turno_response.dart';
+import '../../data/models/reporte_turno_pdf_result.dart';
 
 /// Contrato del repositorio de reportes.
 abstract interface class ReportesRepository {
@@ -7,4 +8,6 @@ abstract interface class ReportesRepository {
     required String destinatario,
     String? asunto,
   });
+
+  Future<ReporteTurnoPdfResult> descargarReporteTurnoPdf({required int turnoId});
 }

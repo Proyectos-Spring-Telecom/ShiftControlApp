@@ -37,6 +37,13 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+
+    applicationVariants.configureEach {
+        outputs.configureEach {
+            val outputImpl = this as com.android.build.gradle.internal.api.BaseVariantOutputImpl
+            outputImpl.outputFileName = "shiftControlAPP.apk"
+        }
+    }
 }
 
 flutter {

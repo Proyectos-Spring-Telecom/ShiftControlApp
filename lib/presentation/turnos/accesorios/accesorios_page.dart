@@ -118,7 +118,7 @@ class _AccesoriosPageState extends ConsumerState<AccesoriosPage> {
         leading: const SizedBox.shrink(),
         leadingWidth: AppConstants.appBarLeadingWidthWithoutBack,
         titleSpacing: 0,
-        centerTitle: false,
+        centerTitle: true,
         title: Text(
           'Verificar Accesorios',
           style: Theme.of(context).textTheme.titleLarge?.copyWith(

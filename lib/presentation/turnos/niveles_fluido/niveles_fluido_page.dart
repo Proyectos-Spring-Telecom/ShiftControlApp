@@ -113,7 +113,7 @@ class _NivelesFluidoPageState extends ConsumerState<NivelesFluidoPage> {
         leading: const SizedBox.shrink(),
         leadingWidth: AppConstants.appBarLeadingWidthWithoutBack,
         titleSpacing: 0,
-        centerTitle: false,
+        centerTitle: true,
         title: Text(
           'Niveles de Fluido',
           style: Theme.of(context).textTheme.titleLarge?.copyWith(

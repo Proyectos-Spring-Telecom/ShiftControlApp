@@ -73,15 +73,13 @@ class _ResumenTurnoPageState extends ConsumerState<ResumenTurnoPage> {
         leading: const SizedBox.shrink(),
         leadingWidth: AppConstants.appBarLeadingWidthWithoutBack,
         titleSpacing: 0,
-        title: Align(
-          alignment: Alignment.centerLeft,
-          child: Text(
-            'Resumen de Turno',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: ResumenTurnoColors.textPrimary(context),
-                  fontWeight: FontWeight.bold,
-                ),
-          ),
+        centerTitle: true,
+        title: Text(
+          'Resumen de Turno',
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                color: ResumenTurnoColors.textPrimary(context),
+                fontWeight: FontWeight.bold,
+              ),
         ),
       ),
       body: Column(

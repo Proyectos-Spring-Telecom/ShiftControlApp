@@ -130,6 +130,19 @@ lib/
 
 **Hub:** `ControlTurnosPage` consulta `GET /api/turnos/mi-turno` (`miTurnoActivoProvider`).
 
+**Historial Reciente (Control de Turnos):** sección con 4 tarjetas `_HistorialItem` alimentadas desde `MiTurnoActivoResponse`:
+
+| Tarjeta | Origen de datos | Subtítulo |
+|---------|-----------------|-----------|
+| Cierre de Turno | `ultimoTurno` | fecha cierre relativa + vehículo |
+| Incidente Reportado | `ultimaIncidenciaAccidente` | fecha + descripción truncada |
+| **Apertura de turno** | **`turnoActual`** | fecha apertura (corta) + `etiqueta` |
+| Registro de Combustible | `ultimaIncidenciaGasolina` | fecha + litros |
+
+- **`turnoActual`:** `{ etiqueta, idTurno, fechaApertura, enCurso }`; si es `null` → «Sin registros».
+- Indicador activo del día (`esRegistroDelDia`): en Apertura de turno usa `turnoActual.fechaApertura`.
+- Tarjeta **Cierre de Turno** sigue usando `ultimoTurno` (sin cambios).
+
 **Checklist apertura (9 pasos):** Inicio → Odómetro → Inspección exterior → Testigos → Fluidos → Luces → Accesorios → Documentación → Resumen.
 
 **Checklist cierre (9 pasos):** mismo orden con rutas `/cierre-*`; paso 1 es inicio de cierre (sin captura de placa).
@@ -177,6 +190,7 @@ Rutas de cierre con prefijo `/cierre-*` (definidas en `ChecklistCierrePasos`).
 - `PopScope(canPop: false)` — bloquea botón físico Back, gesto iOS y pop del Navigator.
 - AppBar sin flecha: `automaticallyImplyLeading: false`.
 - Espaciado del título: `leadingWidth: AppConstants.appBarLeadingWidthWithoutBack` (56 px, equivalente al área del botón back).
+- **Títulos centrados:** AppBar con `centerTitle: true` en las **9 pantallas** del checklist (apertura y cierre): `InicioTurnoPage`, `CapturaOdometroPage`, `RegistroDanosPage`, `IndicadoresTestigoPage`, `NivelesFluidoPage`, `LucesVehiculoPage`, `AccesoriosPage`, `DocumentacionPage`, `ResumenTurnoPage`.
 
 Pantallas con restricción de no regreso en el checklist (pasos 2–9): `CapturaOdometroPage`, `IndicadoresTestigoPage`, `NivelesFluidoPage`, `LucesVehiculoPage`, `AccesoriosPage`, `DocumentacionPage`, `RegistroDanosPage`, `ResumenTurnoPage`.
 
@@ -186,6 +200,7 @@ Pantallas con restricción de no regreso en el checklist (pasos 2–9): `Captura
 
 - Consulta `GET /api/bitacora-vehicular/informacion-general` vía `informacionGeneralProvider`.
 - Secciones: estado, información general, estado del vehículo, tiempo/ubicación, métricas iniciales.
+- **Estado del Vehículo:** renderizado **dinámico** del arreglo `informacionGeneral.estadoVehiculo`; cada ítem muestra `etiqueta` y `valor` del API (sin lista fija ni filtro por posición). Compatible con nuevos estados del backend (ej. «Estado de los niveles del vehículo»). Si el arreglo está vacío → «No disponible».
 - En **Métricas Iniciales**, la etiqueta del odómetro depende del flujo: **Odómetro Inicial** (apertura) u **Odómetro Final** (cierre); el valor y formato provienen del API sin cambios.
 - Acción final: `GradientSlideToAct` — «Iniciar Turno» (apertura) o «Cerrar Turno» (cierre).
 - Feedback de éxito/error en esta pantalla: `QuickAlert` (resto de la app usa principalmente `AppAlertBanner`).
@@ -290,7 +305,8 @@ Pantallas con restricción de no regreso en el checklist (pasos 2–9): `Captura
 - **Logout optimista:** siempre limpia sesión local aunque falle el servidor.
 - **Face Auth sin IA local:** embedding generado exclusivamente por `POST /api/embed` con captura2.
 - **Afiliar Rostro independiente del login:** flujo propio de 3 capturas con validate-pose + embed + `POST /api/rostros`; pantalla de captura dedicada (`FaceAffiliationSingleCapturePage`) con delay post-instrucción.
-- **Checklist secuencial:** pasos internos sin navegación hacia atrás (`PopScope`); solo avance en el flujo.
+- **Checklist secuencial:** pasos internos sin navegación hacia atrás (`PopScope`); solo avance en el flujo; títulos de AppBar centrados (`centerTitle: true`).
+- **Estado del vehículo en resumen:** lista dinámica desde API; sin hardcodear etiquetas en UI.
 - **Errores controlados:** `AppException` y subclases; UI con `AppAlertBanner` (auto-cierre 3 s) y `QuickAlert` en resumen de turno.
 - **Sin lógica de red en UI:** controllers orquestan; red en datasources/servicios.
 - **Web:** deep links por hash; fotos con `Image.memory` / bytes; banner con contexto de overlay.

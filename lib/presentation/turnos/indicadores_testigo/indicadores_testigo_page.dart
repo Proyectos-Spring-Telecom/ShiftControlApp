@@ -125,7 +125,7 @@ class _IndicadoresTestigoPageState extends ConsumerState<IndicadoresTestigoPage>
         leading: const SizedBox.shrink(),
         leadingWidth: AppConstants.appBarLeadingWidthWithoutBack,
         titleSpacing: 0,
-        centerTitle: false,
+        centerTitle: true,
         title: Text(
           'Indicadores',
           style: Theme.of(context).textTheme.titleLarge?.copyWith(

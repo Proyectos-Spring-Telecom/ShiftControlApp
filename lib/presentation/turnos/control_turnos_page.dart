@@ -620,12 +620,13 @@ class _ControlTurnosPageState extends ConsumerState<ControlTurnosPage> {
     return '$fecha • $vehiculo';
   }
 
-  String _subtitleTurnoCompletado(UltimoTurno? ultimoTurno) {
-    if (ultimoTurno == null) return _sinRegistros;
-    final fecha = _formatearFechaCorta(ultimoTurno.fechaCierre);
-    final duracion = _formatearDuracion(ultimoTurno.duracion);
-    if (fecha == '—' && duracion == '—') return _sinRegistros;
-    return '$fecha • $duracion';
+  String _subtitleAperturaTurno(TurnoActual? turnoActual) {
+    if (turnoActual == null) return _sinRegistros;
+    final fecha = _formatearFechaCorta(turnoActual.fechaApertura);
+    final etiqueta = turnoActual.etiqueta?.trim();
+    final estado = (etiqueta == null || etiqueta.isEmpty) ? '—' : etiqueta;
+    if (fecha == '—' && estado == '—') return _sinRegistros;
+    return '$fecha • $estado';
   }
 
   String _subtitleRegistroCombustible(UltimaIncidenciaGasolina? incidencia) {
@@ -678,9 +679,9 @@ class _ControlTurnosPageState extends ConsumerState<ControlTurnosPage> {
         _HistorialItem(
           icon: Icons.check_circle_outline,
           iconBgColor: ControlTurnosColors.iconGreen,
-          title: 'Turno Completado',
-          subtitle: _subtitleTurnoCompletado(miTurno?.ultimoTurno),
-          active: esRegistroDelDia(miTurno?.ultimoTurno?.fechaCierre),
+          title: 'Apertura de turno',
+          subtitle: _subtitleAperturaTurno(miTurno?.turnoActual),
+          active: esRegistroDelDia(miTurno?.turnoActual?.fechaApertura),
         ),
         const SizedBox(height: 10),
         _HistorialItem(

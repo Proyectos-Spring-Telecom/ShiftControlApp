@@ -117,7 +117,7 @@ class _LucesVehiculoPageState extends ConsumerState<LucesVehiculoPage> {
         leading: const SizedBox.shrink(),
         leadingWidth: AppConstants.appBarLeadingWidthWithoutBack,
         titleSpacing: 0,
-        centerTitle: false,
+        centerTitle: true,
         title: Text(
           'Luces del Vehículo',
           style: Theme.of(context).textTheme.titleLarge?.copyWith(

@@ -179,15 +179,13 @@ class _CapturaOdometroPageState extends ConsumerState<CapturaOdometroPage> {
         leading: const SizedBox.shrink(),
         leadingWidth: AppConstants.appBarLeadingWidthWithoutBack,
         titleSpacing: 0,
-        title: Align(
-          alignment: Alignment.centerLeft,
-          child: Text(
-            pageTitle,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: CapturaOdometroColors.textPrimary(context),
-                  fontWeight: FontWeight.bold,
-                ),
-          ),
+        centerTitle: true,
+        title: Text(
+          pageTitle,
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                color: CapturaOdometroColors.textPrimary(context),
+                fontWeight: FontWeight.bold,
+              ),
         ),
       ),
       body: Column(

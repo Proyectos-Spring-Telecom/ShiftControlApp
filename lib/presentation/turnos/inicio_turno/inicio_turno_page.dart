@@ -464,15 +464,13 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
           onPressed: () => Navigator.of(context).pop(),
         ),
         titleSpacing: 0,
-        title: Align(
-          alignment: Alignment.centerLeft,
-          child: Text(
-            pageTitle,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: InicioTurnoColors.textPrimary(context),
-                  fontWeight: FontWeight.bold,
-                ),
-          ),
+        centerTitle: true,
+        title: Text(
+          pageTitle,
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                color: InicioTurnoColors.textPrimary(context),
+                fontWeight: FontWeight.bold,
+              ),
         ),
       ),
       body: Column(

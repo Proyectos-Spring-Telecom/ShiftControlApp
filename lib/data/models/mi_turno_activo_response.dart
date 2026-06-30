@@ -1,5 +1,44 @@
 import '../../core/utils/duracion_parser.dart';
 
+class TurnoActual {
+  const TurnoActual({
+    this.etiqueta,
+    this.idTurno,
+    this.fechaApertura,
+    this.enCurso,
+  });
+
+  final String? etiqueta;
+  final int? idTurno;
+  final DateTime? fechaApertura;
+  final bool? enCurso;
+
+  factory TurnoActual.fromJson(Map<String, dynamic> json) {
+    final fechaRaw = json['fechaApertura'] as String?;
+    return TurnoActual(
+      etiqueta: json['etiqueta'] as String?,
+      idTurno: (json['idTurno'] as num?)?.toInt(),
+      fechaApertura:
+          fechaRaw != null ? DateTime.parse(fechaRaw).toLocal() : null,
+      enCurso: json['enCurso'] as bool?,
+    );
+  }
+
+  TurnoActual copyWith({
+    String? etiqueta,
+    int? idTurno,
+    DateTime? fechaApertura,
+    bool? enCurso,
+  }) {
+    return TurnoActual(
+      etiqueta: etiqueta ?? this.etiqueta,
+      idTurno: idTurno ?? this.idTurno,
+      fechaApertura: fechaApertura ?? this.fechaApertura,
+      enCurso: enCurso ?? this.enCurso,
+    );
+  }
+}
+
 class UltimoTurno {
   const UltimoTurno({
     this.fechaCierre,
@@ -194,6 +233,7 @@ class MiTurnoActivoResponse {
     this.fechaInicio,
     this.duracionSegundos,
     this.vehiculo,
+    this.turnoActual,
     this.ultimoTurno,
     this.ultimaIncidenciaGasolina,
     this.ultimaIncidenciaAccidente,
@@ -204,6 +244,7 @@ class MiTurnoActivoResponse {
   final DateTime? fechaInicio;
   final int? duracionSegundos;
   final MiTurnoActivoVehiculo? vehiculo;
+  final TurnoActual? turnoActual;
   final UltimoTurno? ultimoTurno;
   final UltimaIncidenciaGasolina? ultimaIncidenciaGasolina;
   final UltimaIncidenciaAccidente? ultimaIncidenciaAccidente;
@@ -219,6 +260,9 @@ class MiTurnoActivoResponse {
           ? MiTurnoActivoVehiculo.fromJson(
               json['vehiculo'] as Map<String, dynamic>,
             )
+          : null,
+      turnoActual: json['turnoActual'] != null
+          ? TurnoActual.fromJson(json['turnoActual'] as Map<String, dynamic>)
           : null,
       ultimoTurno: json['ultimoTurno'] != null
           ? UltimoTurno.fromJson(json['ultimoTurno'] as Map<String, dynamic>)
@@ -242,6 +286,7 @@ class MiTurnoActivoResponse {
     DateTime? fechaInicio,
     int? duracionSegundos,
     MiTurnoActivoVehiculo? vehiculo,
+    TurnoActual? turnoActual,
     UltimoTurno? ultimoTurno,
     UltimaIncidenciaGasolina? ultimaIncidenciaGasolina,
     UltimaIncidenciaAccidente? ultimaIncidenciaAccidente,
@@ -252,6 +297,7 @@ class MiTurnoActivoResponse {
       fechaInicio: fechaInicio ?? this.fechaInicio,
       duracionSegundos: duracionSegundos ?? this.duracionSegundos,
       vehiculo: vehiculo ?? this.vehiculo,
+      turnoActual: turnoActual ?? this.turnoActual,
       ultimoTurno: ultimoTurno ?? this.ultimoTurno,
       ultimaIncidenciaGasolina:
           ultimaIncidenciaGasolina ?? this.ultimaIncidenciaGasolina,

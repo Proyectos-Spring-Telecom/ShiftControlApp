@@ -113,7 +113,7 @@ class _DocumentacionPageState extends ConsumerState<DocumentacionPage> {
         leading: const SizedBox.shrink(),
         leadingWidth: AppConstants.appBarLeadingWidthWithoutBack,
         titleSpacing: 0,
-        centerTitle: false,
+        centerTitle: true,
         title: Text(
           'Documentación',
           style: Theme.of(context).textTheme.titleLarge?.copyWith(

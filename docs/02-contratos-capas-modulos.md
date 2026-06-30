@@ -395,6 +395,50 @@ Servicio de dominio de turnos. Usa `ApiClient` y `http` multipart según el endp
 
 ---
 
+### 2.3.16 Modelos — Mi turno activo
+
+**Ubicación:** `lib/data/models/mi_turno_activo_response.dart`
+
+Respuesta de `GET /api/turnos/mi-turno` parseada en `MiTurnoActivoResponse`.
+
+| Modelo / campo | Tipo | Notas |
+|----------------|------|--------|
+| `turnoActivo` | `bool` | Indica si hay turno en curso. |
+| `idTurno` | `int?` | ID del turno activo. |
+| `fechaInicio` | `DateTime?` | Inicio del turno activo. |
+| `duracionSegundos` | `int?` | Duración del turno activo. |
+| `vehiculo` | `MiTurnoActivoVehiculo?` | Placa, foto, detalle marca/modelo. |
+| **`turnoActual`** | **`TurnoActual?`** | Último/apertura de turno para tarjeta Historial Reciente. |
+| `ultimoTurno` | `UltimoTurno?` | Último cierre (fecha, placa, marca, modelo, duración). |
+| `ultimaIncidenciaGasolina` | `UltimaIncidenciaGasolina?` | Último registro de combustible. |
+| `ultimaIncidenciaAccidente` | `UltimaIncidenciaAccidente?` | Último incidente reportado. |
+
+**`TurnoActual`:** `etiqueta?`, `idTurno?`, `fechaApertura?` (ISO → local), `enCurso?`.
+
+**`UltimoTurno`:** `fechaCierre?`, `placa?`, `marca?`, `modelo?`, `duracion?`; getter `vehiculoDisplay`.
+
+**Provider:** `miTurnoActivoProvider` (`MiTurnoActivoNotifier` en `mi_turno_provider.dart`).
+
+---
+
+### 2.3.17 Modelos — Información general de bitácora
+
+**Ubicación:** `lib/data/models/informacion_general_response.dart`
+
+Respuesta de `GET /api/bitacora-vehicular/informacion-general?idBitacoraVehiculo=`.
+
+| Modelo | Campos relevantes |
+|--------|-------------------|
+| `InformacionGeneral` | `vehiculo`, `operador`, **`estadoVehiculo`**, `metricasIniciales`, `ubicacion?` |
+| `EstadoVehiculoItem` | `etiqueta?`, `valor?` — `fromJson` con coerción segura de tipos (`_coerceString`) |
+| `MetricaInicialItem` | `etiqueta?`, `valor?` |
+
+**Parseo `estadoVehiculo`:** arreglo JSON → `whereType<Map<String, dynamic>>()` → `EstadoVehiculoItem.fromJson`. Sin orden fijo; extensible a nuevas etiquetas del backend.
+
+**Provider:** `informacionGeneralProvider` (`InformacionGeneralNotifier`).
+
+---
+
 ## 2.4 Presentación
 
 ### 2.4.1 AppRouter
@@ -446,7 +490,7 @@ Estado: `AuthState(status, user, errorMessage)`. Estados: `initial`, `loading`, 
 | placaValidadaProvider | `StateProvider<PlacasValidarResult?>` | Estado global vehículo validado. |
 | authControllerProvider | `StateNotifierProvider<AuthController, AuthState>` | |
 | turnosServiceProvider | `Provider<TurnosService>` | |
-| miTurnoActivoProvider | `FutureProvider` | Turno activo del operador. |
+| miTurnoActivoProvider | `StateNotifierProvider<MiTurnoActivoNotifier, AsyncValue<MiTurnoActivoResponse>>` | `GET /api/turnos/mi-turno`; incluye `turnoActual`, `ultimoTurno`, incidencias. |
 | turnoDetalleProvider | `FutureProvider.family` | Detalle por `idTurno`. |
 | informacionGeneralProvider | `FutureProvider` | Resumen bitácora. |
 | checklistProgressServiceProvider | `Provider<ChecklistProgressService>` | |
@@ -499,14 +543,16 @@ Estado: `AuthState(status, user, errorMessage)`. Estados: `initial`, `loading`, 
 | Flujo / pantalla | Convención |
 |------------------|------------|
 | **Face Auth** | Captura doble automática; loading "Verificando tu identidad" / "Analizando...."; éxito con banner; **cualquier error** → banner + `pushNamedAndRemoveUntil(login)`. Embedding solo vía backend (`captura2` → `/api/embed`). |
-| **Inicio de Turno (paso 1)** | Card vehículo/operador; placa validada vía `placaValidadaProvider`; Continuar solo con `registered == true`. **Mantiene** flecha de regreso y navegación back normal. |
-| **Pasos internos checklist** | `PopScope(canPop: false)` + `automaticallyImplyLeading: false` + `leadingWidth: AppConstants.appBarLeadingWidthWithoutBack`. Sin regreso a pasos anteriores (botón físico, gesto, AppBar). Pantallas: captura odómetro, indicadores, fluidos, luces, accesorios, documentación, inspección exterior (`RegistroDanosPage`), resumen. |
+| **Inicio de Turno (paso 1)** | Card vehículo/operador; placa validada vía `placaValidadaProvider`; Continuar solo con `registered == true`. **Mantiene** flecha de regreso y navegación back normal. AppBar `centerTitle: true`. |
+| **Checklist apertura/cierre (encabezados)** | AppBar `centerTitle: true` en las 9 pantallas del flujo (misma tipografía y estilos; solo alineación centrada). |
+| **Pasos internos checklist** | `PopScope(canPop: false)` + `automaticallyImplyLeading: false` + `leadingWidth: AppConstants.appBarLeadingWidthWithoutBack` + `centerTitle: true`. Sin regreso a pasos anteriores (botón físico, gesto, AppBar). Pantallas: captura odómetro, indicadores, fluidos, luces, accesorios, documentación, inspección exterior (`RegistroDanosPage`), resumen. |
 | **Identificar placa** | `PopScope(canPop: false)`; si `onRegresar != null` muestra flecha AppBar y botón Regresar que hace pop a la pantalla origen. |
 | **Registro de vehículo** | Formulario independiente del checklist; campos placa/marca/modelo/año/color/económico; OCR vía `IdentificarPlacaPage`; **año con bottom sheet de lista dinámica** (`RegistroVehiculoAnioPicker.availableYears`, 1980 – año actual + 1); `POST /api/placas`; botón Guardar vehículo con loading y validación de campos obligatorios; feedback `AppAlertBanner`. |
 | **Afiliar Rostro** | `GET /api/login/me` → campos operador read-only; botón **Capturar rostro** → 3 capturas (`FaceAffiliationSingleCapturePage`, 3 s post-instrucción) → validate-pose + embed + `POST /api/rostros`; HTTP 409 → alerta info «Rostro registrado»; éxito → banner + botón deshabilitado. **No usa** `FaceAuthCapturePage` ni login facial. |
 | **Apertura de Turno** | Card: Placa, Económico, Año, Marca/Modelo desde provider. |
 | **Cierre de Turno** | Datos desde `placaValidadaProvider`; sin cámara de placa en paso 1. |
-| **Resumen de turno** | `informacionGeneralProvider`; etiqueta odómetro: **Odómetro Inicial** (apertura) / **Odómetro Final** (cierre) según `ChecklistType`; valor sin cambios desde API. Acción: `GradientSlideToAct`. Errores/éxito: `QuickAlert`. |
+| **Control de Turnos — Historial Reciente** | 4 tarjetas desde `miTurnoActivoProvider`: Cierre (`ultimoTurno`), Incidente (`ultimaIncidenciaAccidente`), **Apertura de turno** (`turnoActual`: `fechaApertura` + `etiqueta`), Combustible (`ultimaIncidenciaGasolina`). `turnoActual == null` → «Sin registros». |
+| **Resumen de turno** | `informacionGeneralProvider`; **Estado del Vehículo** dinámico (`estadoVehiculo[].etiqueta` / `.valor`); etiqueta odómetro: **Odómetro Inicial** (apertura) / **Odómetro Final** (cierre) según `ChecklistType`; valor sin cambios desde API. Acción: `GradientSlideToAct`. Errores/éxito: `QuickAlert`. |
 | **Registro combustible** | Turno activo requerido; fotos bomba/tablero; `registroCombustibleProvider`. |
 | **Reporte incidente** | Tipo, descripción, fotos, GPS; geocodificación inversa; providers de selección/registro. |
 | **Detalle turno** | Evidencias con `ExpandableNetworkImage` (loading); compartir reporte por sheet. |
@@ -680,6 +726,9 @@ Face Auth:
 Turnos:
     UI → TurnosService / Providers → ApiClient o http multipart
     Placa: PlateReadRemoteDatasource, PlacasValidarRemoteDatasource → placaValidadaProvider
+    Control de Turnos: miTurnoActivoProvider → GET /api/turnos/mi-turno
+        Historial Reciente: turnoActual (Apertura de turno), ultimoTurno (Cierre), incidencias
+    Resumen: informacionGeneralProvider → estadoVehiculo dinámico (etiqueta/valor)
 
 Reportes:
     DetalleTurnoPage → ReportesService → ReportesRepository → ReportesRemoteDatasource → ApiClient

@@ -137,3 +137,147 @@ Future<PlateCropResult?> cropPlateImage({
 
   return PlateCropResult(bytes: bytes.toList(), savedPath: savedPath);
 }
+
+/// Recorte Web: transformación inversa de [BoxFit.contain] (igual que [CameraPreviewLayer]).
+///
+/// Convierte el rectángulo verde (coordenadas del contenedor) a píxeles de la imagen
+/// capturada, usando el tamaño real del stream y de la foto.
+Future<PlateCropResult?> cropPlateImageWeb({
+  required List<int> imageBytes,
+  required double containerWidth,
+  required double containerHeight,
+  required double previewWidth,
+  required double previewHeight,
+  required double overlayLeft,
+  required double overlayTop,
+  bool saveCroppedForDebug = true,
+}) async {
+  final decoded = img.decodeImage(Uint8List.fromList(imageBytes));
+  if (decoded == null) {
+    debugPrint('Plate crop Web: no se pudo decodificar la imagen');
+    return null;
+  }
+
+  final imageWidth = decoded.width;
+  final imageHeight = decoded.height;
+
+  int cropX = 0, cropY = 0, cropW = 0, cropH = 0;
+  _computeWebCropRect(
+    containerWidth: containerWidth,
+    containerHeight: containerHeight,
+    previewWidth: previewWidth,
+    previewHeight: previewHeight,
+    overlayLeft: overlayLeft,
+    overlayTop: overlayTop,
+    imageWidth: imageWidth,
+    imageHeight: imageHeight,
+    onRect: (x, y, w, h) {
+      cropX = x;
+      cropY = y;
+      cropW = w;
+      cropH = h;
+    },
+  );
+
+  if (cropW < 1 || cropH < 1) {
+    debugPrint('Plate crop Web: área de recorte inválida');
+    return null;
+  }
+
+  final cropped = img.copyCrop(
+    decoded,
+    x: cropX,
+    y: cropY,
+    width: cropW,
+    height: cropH,
+  );
+
+  const jpegQuality = 95;
+  final bytes = img.encodeJpg(cropped, quality: jpegQuality);
+  if (bytes.isEmpty) {
+    debugPrint('Plate crop Web: no se pudo codificar JPEG');
+    return null;
+  }
+
+  String? savedPath;
+  if (saveCroppedForDebug) {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final file = File('${dir.path}/plate_crop_debug_${DateTime.now().millisecondsSinceEpoch}.jpg');
+      await file.writeAsBytes(bytes);
+      savedPath = file.path;
+      debugPrint('Plate crop Web: imagen recortada guardada en $savedPath (${bytes.length} bytes)');
+    } catch (e) {
+      debugPrint('Plate crop Web: no se pudo guardar debug: $e');
+    }
+  }
+
+  return PlateCropResult(bytes: bytes.toList(), savedPath: savedPath);
+}
+
+/// Padding superior del overlay (igual que [_buildOverlay] en identificar_placa_page).
+const double kOverlayTopPadding = 24.0;
+
+/// Padding inferior del overlay (igual que [_buildOverlay]).
+const double kOverlayBottomPadding = 16.0;
+
+/// Texto del overlay; debe coincidir con el mostrado en pantalla.
+const String kOverlayInstructionText = 'Coloca la placa del vehículo dentro del marco';
+
+/// Calcula la posición del recuadro verde en coordenadas del contenedor de la cámara,
+/// replicando el layout Column + Spacer de la UI.
+void _computeWebCropRect({
+  required double containerWidth,
+  required double containerHeight,
+  required double previewWidth,
+  required double previewHeight,
+  required double overlayLeft,
+  required double overlayTop,
+  required int imageWidth,
+  required int imageHeight,
+  required void Function(int x, int y, int w, int h) onRect,
+}) {
+  if (previewWidth <= 0 || previewHeight <= 0) return;
+
+  // BoxFit.contain — misma transformación que CameraPreviewLayer en Web.
+  final scale = (containerWidth / previewWidth) < (containerHeight / previewHeight)
+      ? containerWidth / previewWidth
+      : containerHeight / previewHeight;
+  final displayW = previewWidth * scale;
+  final displayH = previewHeight * scale;
+  final offsetX = (containerWidth - displayW) / 2;
+  final offsetY = (containerHeight - displayH) / 2;
+
+  // Contenedor → coordenadas del stream de vídeo.
+  final streamX = (overlayLeft - offsetX) / scale;
+  final streamY = (overlayTop - offsetY) / scale;
+  final streamW = kOverlayWidth / scale;
+  final streamH = kOverlayHeight / scale;
+
+  // Stream → píxeles de la imagen capturada (puede diferir en resolución del <video>).
+  final pixelScaleX = imageWidth / previewWidth;
+  final pixelScaleY = imageHeight / previewHeight;
+
+  int x = (streamX * pixelScaleX).round();
+  int y = (streamY * pixelScaleY).round();
+  int w = (streamW * pixelScaleX).round();
+  int h = (streamH * pixelScaleY).round();
+
+  x = x.clamp(0, imageWidth - 1);
+  y = y.clamp(0, imageHeight - 1);
+  w = w.clamp(1, imageWidth - x);
+  h = h.clamp(1, imageHeight - y);
+
+  if (kDebugMode) {
+    debugPrint('Plate crop Web — preview size: ${previewWidth}x$previewHeight');
+    debugPrint('Plate crop Web — image size: ${imageWidth}x$imageHeight');
+    debugPrint('Plate crop Web — container size: ${containerWidth}x$containerHeight');
+    debugPrint('Plate crop Web — contain scale: $scale');
+    debugPrint('Plate crop Web — offsetX: $offsetX offsetY: $offsetY');
+    debugPrint('Plate crop Web — pixelScaleX: $pixelScaleX pixelScaleY: $pixelScaleY');
+    debugPrint('Plate crop Web — overlayLeft: $overlayLeft overlayTop: $overlayTop');
+    debugPrint('Plate crop Web — cropLeft: $x cropTop: $y cropWidth: $w cropHeight: $h');
+  }
+
+  onRect(x, y, w, h);
+}

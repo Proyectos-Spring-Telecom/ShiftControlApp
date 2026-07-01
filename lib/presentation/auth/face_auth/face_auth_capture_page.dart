@@ -1,9 +1,12 @@
 import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../../core/utils/web_viewport_lock.dart';
+import '../../widgets/camera_preview_layer.dart';
 import 'face_auth_colors.dart';
 
 /// Pantalla reutilizable para capturar el rostro (encuadre tipo KYC).
@@ -76,6 +79,9 @@ class _FaceAuthCapturePageState extends State<FaceAuthCapturePage> {
         enableAudio: false,
       );
       await _cameraController!.initialize();
+      if (kIsWeb) {
+        lockWebViewportAfterCameraPermission();
+      }
       if (mounted) {
         setState(() {
           _isCameraReady = true;
@@ -217,6 +223,8 @@ class _FaceAuthCapturePageState extends State<FaceAuthCapturePage> {
       backgroundColor: FaceAuthColors.background(context),
       appBar: AppBar(
         backgroundColor: FaceAuthColors.background(context),
+        surfaceTintColor: kIsWeb ? Colors.transparent : null,
+        scrolledUnderElevation: 0,
         elevation: 0,
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: FaceAuthColors.textPrimary(context)),
@@ -413,6 +421,7 @@ class _FaceAuthCapturePageState extends State<FaceAuthCapturePage> {
         context,
         child: Material(
           color: FaceAuthColors.placeholder(context).withValues(alpha: 0.15),
+          surfaceTintColor: kIsWeb ? Colors.transparent : null,
           child: InkWell(
             onTap: _takePhotoFromPicker,
             child: Center(
@@ -474,19 +483,11 @@ class _FaceAuthCapturePageState extends State<FaceAuthCapturePage> {
         return Stack(
           alignment: Alignment.center,
           children: [
-            ClipRect(
-              child: OverflowBox(
-                alignment: Alignment.center,
-                child: FittedBox(
-                  fit: BoxFit.cover,
-                  child: SizedBox(
-                    width: _cameraController!.value.previewSize?.height ?? 1,
-                    height: _cameraController!.value.previewSize?.width ?? 1,
-                    child: CameraPreview(_cameraController!),
-                  ),
-                ),
+            if (kIsWeb)
+              Positioned.fill(
+                child: ColoredBox(color: Theme.of(context).scaffoldBackgroundColor),
               ),
-            ),
+            CameraPreviewLayer(controller: _cameraController!),
             CustomPaint(
               size: Size(constraints.maxWidth, constraints.maxHeight),
               painter: _OvalFramePainter(

@@ -10,6 +10,7 @@ import 'presentation/app_router.dart';
 import 'presentation/controllers/auth_controller.dart';
 import 'presentation/controllers/theme_controller.dart';
 import 'core/theme/app_theme.dart';
+import 'core/utils/web_document_theme_sync.dart';
 
 /// Ruta inicial desde el hash (#/nueva-contrasena?token=...).
 /// En web: Uri.base.fragment puede venir vacío en release; se usa window.location.hash.
@@ -82,6 +83,12 @@ class TurnosSpringApp extends ConsumerWidget {
       themeMode: themePreference.mode,
       onGenerateRoute: AppRouter.onGenerateRouteStatic,
       initialRoute: initialRoute,
+      builder: (context, child) {
+        if (kIsWeb) {
+          syncWebDocumentTheme(Theme.of(context));
+        }
+        return child!;
+      },
       home: useHome
           ? _InitialScreen(status: authState.status)
           : null,

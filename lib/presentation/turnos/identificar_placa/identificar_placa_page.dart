@@ -1,13 +1,16 @@
 import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_constants.dart';
 import '../../../core/errors/app_exception.dart';
+import '../../../core/utils/web_viewport_lock.dart';
 import '../../controllers/auth_controller.dart';
 import '../../widgets/app_alert_banner.dart';
+import '../../widgets/camera_preview_layer.dart';
 import '../inicio_turno/inicio_turno_colors.dart';
 import 'plate_image_crop.dart';
 
@@ -60,6 +63,9 @@ class _IdentificarPlacaPageState extends ConsumerState<IdentificarPlacaPage> {
         enableAudio: false,
       );
       await _cameraController!.initialize();
+      if (kIsWeb) {
+        lockWebViewportAfterCameraPermission();
+      }
       if (mounted) {
         setState(() {
           _isCameraReady = true;
@@ -129,21 +135,39 @@ class _IdentificarPlacaPageState extends ConsumerState<IdentificarPlacaPage> {
       }
 
       // Recortar al área del recuadro verde antes de enviar al API
-      final layoutWidth = MediaQuery.sizeOf(context).width;
-      final layoutHeight = MediaQuery.sizeOf(context).height -
+      final containerWidth = MediaQuery.sizeOf(context).width;
+      final containerHeight = MediaQuery.sizeOf(context).height -
           (AppBar().preferredSize.height + MediaQuery.paddingOf(context).top);
-      final previewSize = _cameraController!.value.previewSize;
-      final previewWidth = previewSize != null ? previewSize.height.toDouble() : layoutWidth;
-      final previewHeight = previewSize != null ? previewSize.width.toDouble() : layoutHeight;
 
-      final cropResult = await cropPlateImage(
-        imageBytes: imageBytes,
-        layoutWidth: layoutWidth,
-        layoutHeight: layoutHeight,
-        previewWidth: previewWidth,
-        previewHeight: previewHeight,
-        saveCroppedForDebug: true,
-      );
+      final PlateCropResult? cropResult;
+      if (kIsWeb) {
+        final previewSize = _cameraController!.value.previewSize;
+        final streamWidth = previewSize?.width.toDouble() ?? containerWidth;
+        final streamHeight = previewSize?.height.toDouble() ?? containerHeight;
+        final overlayRect = _webOverlayRectInContainer(context, containerWidth, containerHeight);
+        cropResult = await cropPlateImageWeb(
+          imageBytes: imageBytes,
+          containerWidth: containerWidth,
+          containerHeight: containerHeight,
+          previewWidth: streamWidth,
+          previewHeight: streamHeight,
+          overlayLeft: overlayRect.left,
+          overlayTop: overlayRect.top,
+          saveCroppedForDebug: true,
+        );
+      } else {
+        final previewSize = _cameraController!.value.previewSize;
+        final previewWidth = previewSize != null ? previewSize.height.toDouble() : containerWidth;
+        final previewHeight = previewSize != null ? previewSize.width.toDouble() : containerHeight;
+        cropResult = await cropPlateImage(
+          imageBytes: imageBytes,
+          layoutWidth: containerWidth,
+          layoutHeight: containerHeight,
+          previewWidth: previewWidth,
+          previewHeight: previewHeight,
+          saveCroppedForDebug: true,
+        );
+      }
 
       final bytesToSend = cropResult?.bytes ?? imageBytes;
       if (cropResult?.savedPath != null) {
@@ -198,6 +222,31 @@ class _IdentificarPlacaPageState extends ConsumerState<IdentificarPlacaPage> {
         showAppAlertError(context, message: 'Error al leer la placa. Intente de nuevo.');
       }
     }
+  }
+
+  /// Posición del recuadro verde en coordenadas del body (solo Web).
+  /// Replica el layout de [_buildOverlay]: padding, texto, Spacers y tamaño fijo.
+  ({double left, double top}) _webOverlayRectInContainer(
+    BuildContext context,
+    double containerWidth,
+    double containerHeight,
+  ) {
+    final textStyle = Theme.of(context).textTheme.titleSmall?.copyWith(
+          fontWeight: FontWeight.w600,
+        );
+    final textPainter = TextPainter(
+      text: TextSpan(text: kOverlayInstructionText, style: textStyle),
+      textAlign: TextAlign.center,
+      textDirection: Directionality.of(context),
+    )..layout(maxWidth: containerWidth);
+
+    final topSection = kOverlayTopPadding + textPainter.height;
+    final availableHeight =
+        containerHeight - topSection - kOverlayBottomPadding - kOverlayHeight;
+    final overlayTop = topSection + availableHeight / 2;
+    final overlayLeft = (containerWidth - kOverlayWidth) / 2;
+
+    return (left: overlayLeft, top: overlayTop);
   }
 
   void _returnPlaca(String plateNumber, {Uint8List? imageBytes}) {
@@ -328,6 +377,9 @@ class _IdentificarPlacaPageState extends ConsumerState<IdentificarPlacaPage> {
 
   Widget _buildCameraPreview() {
     final controller = _cameraController!;
+    if (kIsWeb) {
+      return CameraPreviewLayer(controller: controller);
+    }
     return LayoutBuilder(
       builder: (context, constraints) {
         final size = controller.value.previewSize;
@@ -348,9 +400,9 @@ class _IdentificarPlacaPageState extends ConsumerState<IdentificarPlacaPage> {
     return IgnorePointer(
       child: Column(
         children: [
-          const SizedBox(height: 24),
+          const SizedBox(height: kOverlayTopPadding),
           Text(
-            'Coloca la placa del vehículo dentro del marco',
+            kOverlayInstructionText,
             style: Theme.of(context).textTheme.titleSmall?.copyWith(
                   color: Colors.white,
                   fontWeight: FontWeight.w600,
@@ -361,8 +413,8 @@ class _IdentificarPlacaPageState extends ConsumerState<IdentificarPlacaPage> {
           const Spacer(),
           Center(
             child: Container(
-              width: 280,
-              height: 120,
+              width: kOverlayWidth,
+              height: kOverlayHeight,
               decoration: BoxDecoration(
                 border: Border.all(color: const Color(0xFF66BB6A), width: 3),
                 borderRadius: BorderRadius.circular(8),
@@ -370,7 +422,7 @@ class _IdentificarPlacaPageState extends ConsumerState<IdentificarPlacaPage> {
             ),
           ),
           const Spacer(),
-          const SizedBox(height: 16),
+          const SizedBox(height: kOverlayBottomPadding),
         ],
       ),
     );

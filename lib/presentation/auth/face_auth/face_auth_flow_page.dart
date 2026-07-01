@@ -365,8 +365,9 @@ class _FaceAuthFlowPageState extends ConsumerState<FaceAuthFlowPage> {
         ),
       );
     }
-    return const Scaffold(
-      body: SizedBox.shrink(),
+    return Scaffold(
+      backgroundColor: kIsWeb ? FaceAuthColors.background(context) : null,
+      body: const SizedBox.shrink(),
     );
   }
 }

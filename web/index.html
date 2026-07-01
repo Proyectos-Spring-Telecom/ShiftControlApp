@@ -19,6 +19,7 @@
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="Shift Control - Sistema de control de turnos">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
@@ -40,6 +41,9 @@
       height: 100%;
       background-color: #0a0e1a;
       overflow: hidden;
+      touch-action: manipulation;
+      -webkit-text-size-adjust: 100%;
+      text-size-adjust: 100%;
     }
     
     @media (prefers-color-scheme: light) {
@@ -54,6 +58,29 @@
       }
     }
   </style>
+  <script>
+    // Evita que el navegador cambie la escala al volver del diálogo de permisos de cámara.
+    (function () {
+      var viewportContent =
+        'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover';
+
+      function lockViewport() {
+        var meta = document.querySelector('meta[name="viewport"]');
+        if (meta) {
+          meta.setAttribute('content', viewportContent);
+        }
+      }
+
+      document.addEventListener('visibilitychange', function () {
+        if (!document.hidden) {
+          requestAnimationFrame(lockViewport);
+        }
+      });
+
+      window.addEventListener('pageshow', lockViewport);
+      window.addEventListener('focus', lockViewport);
+    })();
+  </script>
 </head>
 <body>
   <script src="flutter_bootstrap.js" async></script>

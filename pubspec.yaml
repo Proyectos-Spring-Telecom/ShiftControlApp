@@ -82,9 +82,17 @@ flutter:
     - assets/images/spring_logo.png
     - assets/images/favicon.png
     - assets/images/vehicle_lateral_derecho.png
+    - assets/images/vehicle_lateral_derecho.webp
+    - assets/images/vehicle_lateral_derecho_blanco.webp
     - assets/images/vehicle_lateral_izquierdo.png
+    - assets/images/vehicle_lateral_izquierdo.webp
+    - assets/images/vehicle_lateral_izquierdo_blanco.webp
     - assets/images/vehicle_frontal.png
+    - assets/images/vehicle_frontal.webp
+    - assets/images/vehicle_frontal_Blanco.webp
     - assets/images/vehicle_trasera.png
+    - assets/images/vehicle_trasera.webp
+    - assets/images/vehicle_trasera_blanco.webp
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

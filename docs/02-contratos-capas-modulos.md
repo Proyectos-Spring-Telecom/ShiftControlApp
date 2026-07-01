@@ -15,12 +15,15 @@ Contrato del cliente HTTP. Las respuestas 2xx se consideran éxito; en 4xx/5xx l
 | Método | Firma | Notas |
 |--------|--------|--------|
 | get | `Future<Map<String, dynamic>> get(String path, {Map<String, String>? headers})` | Cuerpo vacío → `{}`. |
+| getBytes | `Future<ApiBinaryResponse> getBytes(String path, {Map<String, String>? headers})` | Respuesta binaria (PDF, etc.); tipo `ApiBinaryResponse` con `bytes` y `headers`. |
 | post | `Future<Map<String, dynamic>> post(String path, {dynamic body, Map<String, String>? headers})` | Body típicamente `Map`; JSON. |
 | put | `Future<Map<String, dynamic>> put(String path, {dynamic body, Map<String, String>? headers})` | Idem. |
 | patch | `Future<Map<String, dynamic>> patch(String path, {dynamic body, Map<String, String>? headers})` | Idem. |
 | delete | `Future<Map<String, dynamic>> delete(String path, {Map<String, String>? headers})` | Idem. |
 
-**Implementación:** `HttpApiClient` usa `AppEnvironmentConfig.baseUrl`. Recibe `getToken`, `refreshToken` y `onSessionExpired`. `_shouldSkipAutoBearer(path)` omite `Authorization` automático **solo** en rutas públicas de login: `/api/login`, `/api/login/refresh`, `/api/login/operador/accesso/nip`, `/api/login/usuario/solicitud/recuperacion`. **`GET /api/login/me` y el resto de endpoints autenticados sí reciben Bearer.** El token se normaliza (`replaceAll(RegExp(r'\s+'), '')`) al construir el header. Ante 401/403 intenta un refresh; si falla llama `onSessionExpired()`.
+**Implementación:** `HttpApiClient` usa `AppEnvironmentConfig.baseUrl`. Recibe `getToken`, `refreshToken` y `onSessionExpired`. `_shouldSkipAutoBearer(path)` omite `Authorization` automático **solo** en rutas públicas de login: `/api/login`, `/api/login/refresh`, `/api/login/operador/accesso/nip`, `/api/login/usuario/solicitud/recuperacion`. **`GET /api/login/me` y el resto de endpoints autenticados sí reciben Bearer.** El token se normaliza (`replaceAll(RegExp(r'\s+'), '')`) al construir el header. Ante 401/403 intenta un refresh; si falla llama `onSessionExpired()`. `getBytes` retorna cuerpo crudo sin parseo JSON.
+
+**`ApiBinaryResponse`:** `bytes` (`List<int>`), `headers` (`Map<String, String>`).
 
 ---
 
@@ -129,6 +132,7 @@ Claves de persistencia estables: `keyAuthToken`, `keyRefreshToken`, `keyTokenExp
 | Método | Firma | Comportamiento |
 |--------|--------|----------------|
 | enviarReporteTurno | `Future<Map<String, dynamic>> enviarReporteTurno({required int turnoId, required String destinatario, String? asunto})` | Delega en datasource remoto. |
+| descargarReporteTurnoPdf | `Future<ReporteTurnoPdfResult> descargarReporteTurnoPdf({required int turnoId})` | `GET /api/reportes/turno/{id}` binario PDF. |
 
 ---
 
@@ -317,6 +321,9 @@ Usa `AppEnvironmentConfig.baseUrl`.
 | Método | Firma | Contrato |
 |--------|--------|----------|
 | enviarReporteTurno | `Future<Map<String, dynamic>> enviarReporteTurno({required int turnoId, required String destinatario, String? asunto})` | `POST /api/reportes/turno/{turnoId}/enviar` vía `ApiClient`. Body `{ destinatario, asunto? }`. Timeout 30 s. |
+| descargarReporteTurnoPdf | `Future<ReporteTurnoPdfResult> descargarReporteTurnoPdf({required int turnoId})` | `GET /api/reportes/turno/{turnoId}` vía `ApiClient.getBytes`. Timeout 60 s. `fileName` desde `Content-Disposition` (`fileNameFromContentDisposition`). Errores: 401/403 → `AuthException`; 404/500 → `NetworkException` con mensajes de UI documentados. |
+
+**Modelo `ReporteTurnoPdfResult`:** `bytes` (`Uint8List`), `fileName` (`String`).
 
 ---
 
@@ -518,7 +525,7 @@ Estado: `AuthState(status, user, errorMessage)`. Estados: `initial`, `loading`, 
 
 | Ruta / acceso | Pantalla | Notas |
 |---------------|----------|-------|
-| `/login` | `LoginPage` | Credenciales, NIP, Face Auth (push). |
+| `/login` | `LoginPage` | Credenciales, NIP; **Iniciar Sesión** (sólido) y **Reconocimiento facial** (outline); Face Auth (push). |
 | push | `FaceAuthFlowPage` | No es ruta estática. |
 | `/home` | `MainShell` | Tabs: Home, Turnos, Historial, Perfil. |
 | `/nueva-contrasena?token=` | `NuevaContrasenaPage` | Deep link web. |
@@ -542,10 +549,12 @@ Estado: `AuthState(status, user, errorMessage)`. Estados: `initial`, `loading`, 
 
 | Flujo / pantalla | Convención |
 |------------------|------------|
+| **Login** | Botón **Iniciar Sesión**: `ElevatedButton` sólido (`LoginColors.button`). Botón **Reconocimiento facial**: outline (`buttonOutlineBackground` / `buttonOutlineForeground`, `side` 1 px). |
 | **Face Auth** | Captura doble automática; loading "Verificando tu identidad" / "Analizando...."; éxito con banner; **cualquier error** → banner + `pushNamedAndRemoveUntil(login)`. Embedding solo vía backend (`captura2` → `/api/embed`). |
 | **Inicio de Turno (paso 1)** | Card vehículo/operador; placa validada vía `placaValidadaProvider`; Continuar solo con `registered == true`. **Mantiene** flecha de regreso y navegación back normal. AppBar `centerTitle: true`. |
 | **Checklist apertura/cierre (encabezados)** | AppBar `centerTitle: true` en las 9 pantallas del flujo (misma tipografía y estilos; solo alineación centrada). |
 | **Pasos internos checklist** | `PopScope(canPop: false)` + `automaticallyImplyLeading: false` + `leadingWidth: AppConstants.appBarLeadingWidthWithoutBack` + `centerTitle: true`. Sin regreso a pasos anteriores (botón físico, gesto, AppBar). Pantallas: captura odómetro, indicadores, fluidos, luces, accesorios, documentación, inspección exterior (`RegistroDanosPage`), resumen. |
+| **Inspección Exterior** | `RegistroDanosPage` paso 3 (apertura/cierre); `VehicleViewWidget` + `VehicleInspectionAssets.pathFor(view, brightness)`. **Nativo:** PNG fijos. **Web (`kIsWeb`):** WebP según `Theme.of(context).brightness` (claro: `vehicle_*.webp`; oscuro: `vehicle_*_blanco.webp`, `vehicle_frontal_Blanco.webp`). |
 | **Identificar placa** | `PopScope(canPop: false)`; si `onRegresar != null` muestra flecha AppBar y botón Regresar que hace pop a la pantalla origen. |
 | **Registro de vehículo** | Formulario independiente del checklist; campos placa/marca/modelo/año/color/económico; OCR vía `IdentificarPlacaPage`; **año con bottom sheet de lista dinámica** (`RegistroVehiculoAnioPicker.availableYears`, 1980 – año actual + 1); `POST /api/placas`; botón Guardar vehículo con loading y validación de campos obligatorios; feedback `AppAlertBanner`. |
 | **Afiliar Rostro** | `GET /api/login/me` → campos operador read-only; botón **Capturar rostro** → 3 capturas (`FaceAffiliationSingleCapturePage`, 3 s post-instrucción) → validate-pose + embed + `POST /api/rostros`; HTTP 409 → alerta info «Rostro registrado»; éxito → banner + botón deshabilitado. **No usa** `FaceAuthCapturePage` ni login facial. |
@@ -555,7 +564,7 @@ Estado: `AuthState(status, user, errorMessage)`. Estados: `initial`, `loading`, 
 | **Resumen de turno** | `informacionGeneralProvider`; **Estado del Vehículo** dinámico (`estadoVehiculo[].etiqueta` / `.valor`); etiqueta odómetro: **Odómetro Inicial** (apertura) / **Odómetro Final** (cierre) según `ChecklistType`; valor sin cambios desde API. Acción: `GradientSlideToAct`. Errores/éxito: `QuickAlert`. |
 | **Registro combustible** | Turno activo requerido; fotos bomba/tablero; `registroCombustibleProvider`. |
 | **Reporte incidente** | Tipo, descripción, fotos, GPS; geocodificación inversa; providers de selección/registro. |
-| **Detalle turno** | Evidencias con `ExpandableNetworkImage` (loading); compartir reporte por sheet. |
+| **Detalle turno** | `TurnoDetalleData` desde `GET /api/turnos/{id}`; estado vehículo apertura/cierre dinámico; odómetro, combustible, accidentes; `ExpandableNetworkImage` (loading; Web: `frameBuilder`); sheet compartir PDF + correo (`compartir_reporte_sheets.dart`). |
 | **Historial** | Scroll infinito por día; filtro local y rango de fechas. |
 
 ---
@@ -569,7 +578,7 @@ Estado: `AuthState(status, user, errorMessage)`. Estados: `initial`, `loading`, 
 | `AppAlertBanner` / `showAppAlertBanner` | Banners éxito/error/info. **Contrato:** visible **3 segundos** y se oculta automáticamente (`_bannerVisibilityDuration`). |
 | `LoadingOverlay` | Overlay de carga en formularios. |
 | `CustomTextField` | Campos de texto estilizados. |
-| `ExpandableNetworkImage` | Imagen remota expandible con loading. |
+| `ExpandableNetworkImage` | Imagen remota expandible con loading. **Android/iOS:** `loadingBuilder` (spinner + «Cargando imagen...»). **Web (`kIsWeb`):** `frameBuilder` hasta primer frame (misma UI de loading). Tap → `showNetworkImagePreview`. |
 | `CapturedEvidenceImage` / `NetworkImagePreview` | Evidencias en checklist. |
 
 ---
@@ -607,6 +616,39 @@ Estado: `AuthState(status, user, errorMessage)`. Estados: `initial`, `loading`, 
 | `FaceAffiliationCaptureResult` | `exitoso(rostroId)` \| `conflictoRegistro(mensaje?)` para HTTP 409. |
 
 **Colores UI:** `AfiliarRostroColors` (`lib/presentation/afiliar_rostro/afiliar_rostro_colors.dart`).
+
+---
+
+### 2.4.9 Inspección Exterior — assets del vehículo
+
+**Ubicación:** `lib/presentation/turnos/registro_danos/vehicle_inspection_assets.dart`
+
+| Método | Firma | Contrato |
+|--------|--------|----------|
+| pathFor | `static String pathFor(VehicleView view, Brightness brightness)` | Si `kIsWeb` → `_webPathFor` (WebP según tema). Si no Web → `_nativePathFor` (PNG fijos, sin tema). |
+
+**Assets Web — tema claro:** `vehicle_lateral_izquierdo.webp`, `vehicle_trasera.webp`, `vehicle_frontal.webp`, `vehicle_lateral_derecho.webp`.
+
+**Assets Web — tema oscuro:** `vehicle_lateral_izquierdo_blanco.webp`, `vehicle_trasera_blanco.webp`, `vehicle_frontal_Blanco.webp`, `vehicle_lateral_derecho_blanco.webp`.
+
+**Assets nativos (siempre):** `vehicle_lateral_izquierdo.png`, `vehicle_trasera.png`, `vehicle_frontal.png`, `vehicle_lateral_derecho.png`.
+
+**Consumidor:** `VehicleViewWidget` (`lib/presentation/turnos/registro_danos/widgets/vehicle_view_widget.dart`) — única pantalla: `RegistroDanosPage` (apertura y cierre).
+
+---
+
+### 2.4.10 Detalle de turno — compartir reporte
+
+**Ubicación:** `lib/presentation/turnos/detalle_turno/widgets/compartir_reporte_sheets.dart`
+
+| Función / elemento | Contrato |
+|--------------------|----------|
+| `showCompartirReporteOpciones` | Bottom sheet: **Compartir** (PDF) y enlace a envío por correo. |
+| `_compartirPdf` | `reportesServiceProvider.descargarReporteTurnoPdf` → `saveBytesToTempFile` → `Share.shareXFiles` (`share_plus`). Loading en botón; `Navigator.pop` antes de compartir. |
+| `showEnviarReporteEmailSheet` | Formulario email/asunto → `enviarReporteTurno`. |
+| Errores UI | `AppAlertBanner` según `AuthException` / `NetworkException`. |
+
+**Provider:** `reportes_provider.dart` (`reportesServiceProvider`).
 
 ---
 
@@ -672,6 +714,7 @@ Estado: `AuthState(status, user, errorMessage)`. Estados: `initial`, `loading`, 
 | Método | Contrato |
 |--------|----------|
 | enviarReporteTurno | Delega en `ReportesRepository`; valida destinatario. |
+| descargarReporteTurnoPdf | Delega en `ReportesRepository`; retorna `ReporteTurnoPdfResult`. |
 
 ---
 
@@ -704,6 +747,33 @@ Persiste en SharedPreferences el progreso del checklist (paso actual, ids de bit
 - **Stub (web):** `readFileBytes` → `null`.
 - **IO:** `File(path).readAsBytes()`.
 
+### 2.6.3 Guardado temporal de bytes (PDF compartir)
+
+**Ubicación:** `lib/core/utils/save_bytes_to_temp_file.dart` (export condicional)
+
+| Plataforma | Implementación | Contrato |
+|------------|----------------|----------|
+| Web | `save_bytes_to_temp_file_stub.dart` | Escribe bytes en directorio temporal del navegador; retorna `XFile`. |
+| IO (Android, iOS, desktop) | `save_bytes_to_temp_file_io.dart` | `path_provider` + archivo temporal; retorna `XFile`. |
+
+**Firma:** `Future<XFile> saveBytesToTempFile({required List<int> bytes, required String fileName, String? mimeType})`
+
+### 2.6.4 Content-Disposition (nombre PDF)
+
+**Ubicación:** `lib/core/utils/content_disposition_utils.dart`
+
+| Función | Contrato |
+|---------|----------|
+| `fileNameFromContentDisposition` | Parsea header `Content-Disposition`; fallback si ausente. |
+
+### 2.6.5 Viewport Web (permisos de cámara)
+
+**Ubicación:** `web/index.html`
+
+- Meta viewport: `width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover`.
+- CSS: `touch-action: manipulation`, `text-size-adjust: 100%`.
+- Script: reaplica viewport en `visibilitychange`, `pageshow`, `focus` al volver del diálogo de permisos de cámara.
+
 ---
 
 ## 2.7 Resumen de dependencias entre capas
@@ -731,7 +801,10 @@ Turnos:
     Resumen: informacionGeneralProvider → estadoVehiculo dinámico (etiqueta/valor)
 
 Reportes:
-    DetalleTurnoPage → ReportesService → ReportesRepository → ReportesRemoteDatasource → ApiClient
+    DetalleTurnoPage → compartir_reporte_sheets.dart
+        PDF: ReportesService.descargarReporteTurnoPdf → ReportesRepository → ReportesRemoteDatasource → ApiClient.getBytes (GET /api/reportes/turno/{id})
+            → saveBytesToTempFile → share_plus
+        Correo: ReportesService.enviarReporteTurno → POST /api/reportes/turno/{id}/enviar
 
 Registro de vehículo:
     RegistroVehiculoPage → registroVehiculoRepositoryProvider → RegistroVehiculoRepositoryImpl
@@ -745,6 +818,11 @@ Afiliar Rostro (UI actual):
         → FaceAffiliationRemoteDatasource (validate-pose, POST /api/rostros)
         → FaceAuthRemoteDatasource (POST /api/embed, JWT servicio)
     Legacy (sin UI): AfiliarRostroService → AfiliarRostroRemoteDatasource (POST /api/face-auth/enroll)
+
+Inspección Exterior:
+    RegistroDanosPage → VehicleViewWidget → VehicleInspectionAssets.pathFor
+        kIsWeb: WebP por Theme.brightness
+        Nativo: PNG fijos
 
 Refresh:
     HttpApiClient → RefreshTokenRunner (POST /api/login/refresh) → TokenStorageService

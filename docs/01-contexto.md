@@ -2,7 +2,7 @@
 
 ## 1.1 Descripción general
 
-**Turnos Spring** es una aplicación Flutter multiplataforma (Android, iOS, Web) para el control de turnos operativos. Permite autenticación (login con correo/contraseña, NIP y reconocimiento facial), flujos de apertura y cierre de turno (checklist, fotos de resguardo/tablero, odómetro, combustible, daños, reporte de incidentes), registro de vehículos (alta de placa vía `POST /api/placas`), **afiliación de rostro del operador** (captura facial + `POST /api/rostros`), consulta de historial y detalle de turnos, envío de reportes por correo, y gestión de perfil y apariencia.
+**Turnos Spring** es una aplicación Flutter multiplataforma (Android, iOS, Web) para el control de turnos operativos. Permite autenticación (login con correo/contraseña, NIP y reconocimiento facial), flujos de apertura y cierre de turno (checklist, fotos de resguardo/tablero, odómetro, inspección exterior, combustible, reporte de incidentes), registro de vehículos (alta de placa vía `POST /api/placas`), **afiliación de rostro del operador** (captura facial + `POST /api/rostros`), consulta de historial y detalle de turnos, **compartir reporte de turno en PDF** y envío por correo, y gestión de perfil y apariencia.
 
 Toda la comunicación con el backend se realiza contra el **BFF ShiftControl** (`AppEnvironmentConfig.baseUrl`). No hay URLs separadas para BehaviorIQ ni hosts legacy (`spcode.ddns.net`, `faceauth.ddns.net`).
 
@@ -21,10 +21,12 @@ La solución sigue una **arquitectura en capas** (data / domain / presentation) 
 | Persistencia local | SharedPreferences (sesión, checklist, tema) |
 | Ubicación | `geolocator` (Face Auth, apertura/cierre de turno) |
 | Cámara / imágenes | `camera`, `image_picker`, `image` |
+| Compartir archivos | `share_plus` (PDF de reporte de turno en Detalle de Turno) |
 | Fechas (historial) | `calendar_date_picker2` (selector de rango en Historial de Turnos) |
 | Selector de año (vehículo) | Bottom sheet con lista dinámica (Registro de Vehículo; sin calendario) |
 | Temas | Material 3 (`AppTheme` light/dark, `ThemeController`) |
-| Plataformas | Android, iOS, Web (hash routing para deep links) |
+| Plataformas | Android, iOS, Web (hash routing para deep links; ajustes Web en `web/index.html`) |
+| Build Android release | APK Gradle: `shiftControlAPP.apk` (`android/app/build.gradle.kts`) |
 
 ---
 
@@ -39,7 +41,7 @@ lib/
 │   ├── errors/             # AppException, AuthException, NetworkException, StorageException
 │   ├── network/            # ApiClient, HttpApiClient (refresh + reintento 401/403)
 │   ├── theme/              # AppTheme, colores
-│   └── utils/              # Validadores, initial route (web/stub), read file bytes, date_format_utils
+│   └── utils/              # Validadores, initial route (web/stub), read/save file bytes, content-disposition, date_format_utils
 ├── data/
 │   ├── datasources/
 │   │   ├── local/          # AuthLocalDatasource
@@ -60,7 +62,7 @@ lib/
 │   ├── auth/               # Login, recuperar/nueva contraseña, perfil, face_auth
 │   ├── afiliar_rostro/     # AfiliarRostroPage, captura facial de afiliación
 │   ├── home/               # MainShell, Drawer, bottom nav, tabs
-│   ├── turnos/             # Control, checklist apertura/cierre, historial, detalle, placa, incidentes, registro vehículo
+│   ├── turnos/             # Control, checklist apertura/cierre, historial, detalle, placa, incidentes, registro vehículo, inspección exterior
 │   ├── settings/           # Apariencia
 │   ├── widgets/            # AppAlertBanner, LoadingOverlay, ExpandableNetworkImage, etc.
 │   └── app_router.dart
@@ -75,6 +77,7 @@ lib/
 
 #### Login correo/contraseña (2 pasos)
 - **UI:** `LoginPage` → `AuthController.login`
+- **Jerarquía visual de botones:** **Iniciar Sesión** — botón primario sólido (azul); **Reconocimiento facial** — estilo outline (borde, sin relleno sólido). Misma disposición en modos credenciales y NIP.
 - **API:**
   1. `POST /api/login` → `token`, `refreshToken`, `expiresIn`
   2. `GET /api/login/me` (Bearer) → datos del usuario
@@ -194,6 +197,17 @@ Rutas de cierre con prefijo `/cierre-*` (definidas en `ChecklistCierrePasos`).
 
 Pantallas con restricción de no regreso en el checklist (pasos 2–9): `CapturaOdometroPage`, `IndicadoresTestigoPage`, `NivelesFluidoPage`, `LucesVehiculoPage`, `AccesoriosPage`, `DocumentacionPage`, `RegistroDanosPage`, `ResumenTurnoPage`.
 
+**Inspección Exterior (`RegistroDanosPage` — paso 3 apertura y cierre):**
+
+- Título AppBar: «Inspección Exterior»; 4 vistas del vehículo (frontal, trasera, lateral izquierdo, lateral derecho) con puntos interactivos de daño.
+- **Widget de imagen:** `VehicleViewWidget` → `VehicleInspectionAssets.pathFor(view, brightness)`.
+- **Android / iOS:** assets fijos `.png` (`vehicle_lateral_izquierdo.png`, `vehicle_trasera.png`, `vehicle_frontal.png`, `vehicle_lateral_derecho.png`) — sin cambio por tema.
+- **Flutter Web (`kIsWeb`):** assets `.webp` según `Theme.of(context).brightness`:
+  - Tema claro: `vehicle_* .webp` (versión estándar).
+  - Tema oscuro: `vehicle_*_blanco.webp` / `vehicle_frontal_Blanco.webp` (versión blanca).
+- Helper centralizado: `lib/presentation/turnos/registro_danos/vehicle_inspection_assets.dart`.
+- API de registro de daños sin cambios: `POST /api/turnos/inspeccion-vehiculo-ex`.
+
 **`IdentificarPlacaPage`:** en el checklist aplica `PopScope(canPop: false)`; si se abre con callback `onRegresar` (desde Inicio de Turno o Registro de Vehículo), el botón **Regresar** del pie y la flecha del AppBar ejecutan `Navigator.pop` y conservan el formulario de la pantalla origen.
 
 **Resumen de turno (`ResumenTurnoPage`):**
@@ -280,18 +294,40 @@ Pantallas con restricción de no regreso en el checklist (pasos 2–9): `Captura
 
 ### Detalle de turno
 - **Pantalla:** `DetalleTurnoPage` — navegación desde historial con `idTurno`
-- **API:** `GET /api/turnos/{id}` (`turnoDetalleProvider`)
-- Muestra datos, evidencias, bitácoras, incidencias (orden: fecha → tipo → descripción → evidencias)
-- **Imágenes remotas:** `ExpandableNetworkImage` con indicador de carga
+- **API:** `GET /api/turnos/{id}` (`turnoDetalleProvider`) → `TurnoDetalleData`
+- **Secciones:** estado del turno, empleado/vehículo, **Estado del Vehículo — Apertura** (dinámico desde bitácora inicio), **Estado del Vehículo — Cierre** (si hay bitácora de fin), horario, odómetro (fotos lectura inicial/final), kilometraje actual, **Registro de Combustible** (incidencias gasolina con fotos tablero/bomba), **Incidencias de Accidente** (tipo, descripción, hasta 3 evidencias)
+- **Estado del vehículo (apertura/cierre):** lista dinámica `estadoVehiculo[]` con `etiqueta` / `valor` del API (mismo criterio que Resumen de Turno)
+- **Imágenes remotas:** `ExpandableNetworkImage` con indicador de carga (`CircularProgressIndicator` + texto «Cargando imagen...»); en **Web** usa `frameBuilder` (`kIsWeb`) porque `loadingBuilder` no reporta progreso en navegador
+- **Compartir:** icono AppBar → sheet `compartir_reporte_sheets.dart` con **Compartir** (PDF) y **Enviar por correo**
 - Mensaje de fin de detalle al final del listado
 
-### Compartir reporte por correo
-- **UI:** sheet en `DetalleTurnoPage` (`compartir_reporte_sheets.dart`)
-- **API:** `POST /api/reportes/turno/{id}/enviar` — body `{ destinatario, asunto? }`
-- Cadena: `ReportesService` → `ReportesRepository` → `ReportesRemoteDatasource`
+### Compartir reporte de turno (PDF y correo)
+- **UI:** `DetalleTurnoPage` → `showCompartirReporteOpciones` / `showEnviarReporteEmailSheet`
+- **Compartir PDF:**
+  1. `GET /api/reportes/turno/{idTurno}` — respuesta binaria PDF (`ApiClient.getBytes`)
+  2. Nombre de archivo desde header `Content-Disposition` (`content_disposition_utils.dart`)
+  3. Guardado temporal (`save_bytes_to_temp_file.dart` — stub Web / IO nativo)
+  4. `Share.shareXFiles` vía `share_plus`
+- **Errores PDF mapeados:** 401 sesión expirada; 403 sin permisos; 404 reporte no encontrado; 500 error al generar; timeout 60 s
+- **Enviar por correo:** `POST /api/reportes/turno/{id}/enviar` — body `{ destinatario, asunto? }` (sin cambios respecto al flujo previo)
+- **Cadena PDF:** `ReportesService.descargarReporteTurnoPdf` → `ReportesRepository` → `ReportesRemoteDatasource` → `HttpApiClient.getBytes`
+- **Modelo:** `ReporteTurnoPdfResult` (`bytes`, `fileName`)
+- **UX Compartir:** loading en botón mientras descarga; cierra sheet antes de abrir diálogo nativo de compartir
 
 ### Apariencia
 - `AppearancePage` — tema claro / oscuro / sistema (`themeModePreferenceProvider`)
+- En **Web**, el cambio de tema actualiza las imágenes de Inspección Exterior al reconstruir `RegistroDanosPage` (assets `.webp` vía `VehicleInspectionAssets`)
+
+### Comportamiento específico Flutter Web
+
+| Área | Implementación |
+|------|----------------|
+| Deep links | Hash `#/nueva-contrasena?token=...` en `main.dart` / `initial_route_web.dart` |
+| Viewport / cámara | `web/index.html`: meta viewport fijo, `touch-action: manipulation`, script que reaplica escala al volver del diálogo de permisos de cámara |
+| Carga de imágenes (Detalle de Turno) | `ExpandableNetworkImage`: `frameBuilder` cuando `kIsWeb`; Android/iOS mantienen `loadingBuilder` |
+| Inspección Exterior | `VehicleInspectionAssets`: assets `.webp` según tema solo en Web; móvil usa `.png` fijos |
+| Archivos temporales PDF | `save_bytes_to_temp_file_stub.dart` (Web) / `save_bytes_to_temp_file_io.dart` (IO) |
+| Fotos en checklist | `Uint8List` / `Image.memory` para compatibilidad web |
 
 ---
 
@@ -309,8 +345,11 @@ Pantallas con restricción de no regreso en el checklist (pasos 2–9): `Captura
 - **Estado del vehículo en resumen:** lista dinámica desde API; sin hardcodear etiquetas en UI.
 - **Errores controlados:** `AppException` y subclases; UI con `AppAlertBanner` (auto-cierre 3 s) y `QuickAlert` en resumen de turno.
 - **Sin lógica de red en UI:** controllers orquestan; red en datasources/servicios.
-- **Web:** deep links por hash; fotos con `Image.memory` / bytes; banner con contexto de overlay.
+- **Web:** deep links por hash; fotos con `Image.memory` / bytes; banner con contexto de overlay; viewport fijo y sin zoom post-permisos de cámara (`web/index.html`); carga de imágenes de red con `frameBuilder` en `ExpandableNetworkImage`; assets de vehículo en Inspección Exterior según tema solo en Web.
 - **Fotos en checklist:** `Uint8List` en memoria para compatibilidad web.
+- **Reportes PDF:** descarga binaria con `ApiClient.getBytes`; compartir con `share_plus`; nombre de archivo desde `Content-Disposition`.
+- **Inspección Exterior:** selección de asset centralizada en `VehicleInspectionAssets`; PNG en nativo, WebP temático en Web.
+- **Build Android:** nombre de APK release `shiftControlAPP.apk` (Gradle `applicationVariants`).
 
 ---
 
@@ -337,5 +376,5 @@ Face:     POST /api/embed/liveness-check, POST /api/embed, POST /api/auth/valida
 Turnos:   /api/turnos/*, /api/bitacora-vehicular/informacion-general
           /api/ubicacion/reverse, /api/turnos/incidencias/*
 Placas:   POST /api/plate/read, GET /api/placas/validar, POST /api/placas
-Reportes: POST /api/reportes/turno/{id}/enviar
+Reportes: GET /api/reportes/turno/{id} (PDF), POST /api/reportes/turno/{id}/enviar
 ```

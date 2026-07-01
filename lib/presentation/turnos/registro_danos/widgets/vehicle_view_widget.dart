@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/damage_point_model.dart';
-import '../registro_danos_colors.dart';
+import '../vehicle_inspection_assets.dart';
 import 'damage_point_widget.dart';
 
 /// ! Widget que muestra la vista del vehículo con puntos interactivos.
@@ -30,7 +30,7 @@ class VehicleViewWidget extends StatelessWidget {
         return Stack(
           children: [
             Positioned.fill(
-              child: _buildVehicleView(),
+              child: _buildVehicleView(context),
             ),
             ...points.map((point) {
               final x = point.relativeX * width - 16;
@@ -50,9 +50,12 @@ class VehicleViewWidget extends StatelessWidget {
     );
   }
 
-  Widget _buildVehicleView() {
-    final imagePath = _getImagePath();
-    
+  Widget _buildVehicleView(BuildContext context) {
+    final imagePath = VehicleInspectionAssets.pathFor(
+      view,
+      Theme.of(context).brightness,
+    );
+
     return Padding(
       padding: const EdgeInsets.all(20),
       child: Image.asset(
@@ -60,19 +63,6 @@ class VehicleViewWidget extends StatelessWidget {
         fit: BoxFit.contain,
       ),
     );
-  }
-
-  String _getImagePath() {
-    switch (view) {
-      case VehicleView.lateralIzquierdo:
-        return 'assets/images/vehicle_lateral_izquierdo.png';
-      case VehicleView.lateralDerecho:
-        return 'assets/images/vehicle_lateral_derecho.png';
-      case VehicleView.frontal:
-        return 'assets/images/vehicle_frontal.png';
-      case VehicleView.trasera:
-        return 'assets/images/vehicle_trasera.png';
-    }
   }
 }
 

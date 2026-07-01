@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'network_image_preview.dart';
@@ -56,10 +57,20 @@ class ExpandableNetworkImage extends StatelessWidget {
             fit: fit,
             width: width ?? double.infinity,
             height: height,
-            loadingBuilder: (context, child, loadingProgress) {
-              if (loadingProgress == null) return child;
-              return _loadingPlaceholder(context, loadingProgress);
-            },
+            loadingBuilder: kIsWeb
+                ? null
+                : (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return _loadingPlaceholder(context, loadingProgress);
+                  },
+            frameBuilder: kIsWeb
+                ? (context, child, frame, wasSynchronouslyLoaded) {
+                    if (wasSynchronouslyLoaded || frame != null) {
+                      return child;
+                    }
+                    return _loadingPlaceholder(context);
+                  }
+                : null,
             errorBuilder: (context, error, stackTrace) {
               if (placeholder != null) return placeholder!;
               return _errorPlaceholder(context);
@@ -71,11 +82,11 @@ class ExpandableNetworkImage extends StatelessWidget {
   }
 
   Widget _loadingPlaceholder(
-    BuildContext context,
-    ImageChunkEvent loadingProgress,
-  ) {
-    final expected = loadingProgress.expectedTotalBytes;
-    final loaded = loadingProgress.cumulativeBytesLoaded;
+    BuildContext context, [
+    ImageChunkEvent? loadingProgress,
+  ]) {
+    final expected = loadingProgress?.expectedTotalBytes;
+    final loaded = loadingProgress?.cumulativeBytesLoaded ?? 0;
     final hasProgress = expected != null && expected > 0;
 
     return Center(

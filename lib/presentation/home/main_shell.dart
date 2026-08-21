@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/theme/app_colors.dart';
 import '../auth/profile/profile_colors.dart';
 import '../auth/profile/profile_page.dart';
 import 'drawer/app_drawer.dart';
@@ -276,6 +277,10 @@ class _MainShellState extends State<MainShell> {
             _showControlTurnos = true;
             _selectedTab = MainShellTab.turnos;
           }),
+      onHistorialTap: () => setState(() {
+            _showControlTurnos = false;
+            _selectedTab = MainShellTab.historial;
+          }),
     );
   }
 
@@ -293,8 +298,11 @@ class _MainShellState extends State<MainShell> {
 
   @override
   Widget build(BuildContext context) {
+    final navBackground = AppColors.background(context);
+
     return Scaffold(
       key: _scaffoldKey,
+      backgroundColor: navBackground,
       drawer: AppDrawer(
         onControlTurnosTap: _onControlTurnosTap,
         onHistorialTap: _onHistorialTap,
@@ -302,6 +310,10 @@ class _MainShellState extends State<MainShell> {
       ),
       body: _buildBody(),
       bottomNavigationBar: NavigationBar(
+        backgroundColor: navBackground,
+        surfaceTintColor: Colors.transparent,
+        shadowColor: Colors.transparent,
+        elevation: 0,
         selectedIndex: _effectiveSelectedIndex,
         onDestinationSelected: _onDestinationSelected,
         destinations: const [
@@ -336,15 +348,21 @@ class _TabContent extends StatelessWidget {
     required this.selectedTab,
     required this.onDrawerOpen,
     this.onComenzarTap,
+    this.onHistorialTap,
   });
 
   final MainShellTab selectedTab;
   final VoidCallback onDrawerOpen;
   final VoidCallback? onComenzarTap;
+  final VoidCallback? onHistorialTap;
 
   Widget _buildPage(MainShellTab tab) {
     return switch (tab) {
-      MainShellTab.home => HomeTab(onComenzarTap: onComenzarTap),
+      MainShellTab.home => HomeTab(
+          onComenzarTap: onComenzarTap,
+          onOpenDrawer: onDrawerOpen,
+          onHistorialTap: onHistorialTap,
+        ),
       MainShellTab.turnos => const PlaceholderTab(title: 'Turnos'),
       MainShellTab.historial => const HistorialTab(),
       MainShellTab.profile => const ProfilePage(),
@@ -362,24 +380,26 @@ class _TabContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final showShellAppBar = selectedTab != MainShellTab.home;
     return Column(
       children: [
-        AppBar(
-          backgroundColor: ProfileColors.background(context),
-          foregroundColor: ProfileColors.textPrimary(context),
-          title: Text(
-            _titleFor(selectedTab),
-            style: TextStyle(
-              color: ProfileColors.textPrimary(context),
-              fontWeight: FontWeight.bold,
+        if (showShellAppBar)
+          AppBar(
+            backgroundColor: ProfileColors.background(context),
+            foregroundColor: ProfileColors.textPrimary(context),
+            title: Text(
+              _titleFor(selectedTab),
+              style: TextStyle(
+                color: ProfileColors.textPrimary(context),
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            centerTitle: false,
+            leading: IconButton(
+              icon: Icon(Icons.menu, color: ProfileColors.textPrimary(context)),
+              onPressed: onDrawerOpen,
             ),
           ),
-          centerTitle: false,
-          leading: IconButton(
-            icon: Icon(Icons.menu, color: ProfileColors.textPrimary(context)),
-            onPressed: onDrawerOpen,
-          ),
-        ),
         Expanded(
           child: IndexedStack(
             index: selectedTab.index,

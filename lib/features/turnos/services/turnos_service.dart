@@ -102,14 +102,16 @@ class TurnosService {
     }
   }
 
-  /// Crea un turno de apertura con foto + ubicaci?n GPS.
+  /// Crea un turno de apertura con fotos + ubicación GPS.
   /// POST /api/turnos (multipart/form-data)
   Future<CrearTurnoResponse> crearTurno({
     required String placa,
     required double latitud,
     required double longitud,
     required List<int> evidenciaBytes,
+    required List<int> evidenciaLicenciaBytes,
     String filename = 'evidencia.jpeg',
+    String evidenciaLicenciaFilename = 'evidencia_licencia.jpeg',
   }) async {
     final token = await _tokenStorage.getToken();
     if (token == null || token.isEmpty) {
@@ -134,9 +136,17 @@ class TurnosService {
       filename: filename,
       contentType: MediaType('image', 'jpeg'),
     ));
+    request.files.add(http.MultipartFile.fromBytes(
+      'evidenciaLicencia',
+      Uint8List.fromList(evidenciaLicenciaBytes),
+      filename: evidenciaLicenciaFilename,
+      contentType: MediaType('image', 'jpeg'),
+    ));
 
     debugPrint(
-      'TurnosService: POST /api/turnos (multipart) placa=$placa, lat=$latitud, lng=$longitud, foto=${evidenciaBytes.length} bytes',
+      'TurnosService: POST /api/turnos (multipart) placa=$placa, lat=$latitud, lng=$longitud, '
+      'evidenciaApertura=${evidenciaBytes.length} bytes, '
+      'evidenciaLicencia=${evidenciaLicenciaBytes.length} bytes',
     );
 
     final streamed = await request.send();

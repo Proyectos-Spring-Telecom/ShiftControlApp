@@ -44,6 +44,7 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
   String? _vehiculoSeleccionado;
   Uint8List? _fotoResguardo;
   Uint8List? _evidenciaBytes;
+  Uint8List? _evidenciaLicencia;
   final ImagePicker _picker = ImagePicker();
   bool _validandoPlaca = false;
   bool _creandoTurno = false;
@@ -104,6 +105,15 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
     }
   }
 
+  Future<void> _tomarFotoLicencia() async {
+    if (_placaValidarResult?.registered != true) return;
+    final XFile? photo = await _picker.pickImage(source: ImageSource.camera);
+    if (photo != null && mounted) {
+      final bytes = await photo.readAsBytes();
+      if (mounted) setState(() => _evidenciaLicencia = bytes);
+    }
+  }
+
   void _abrirEscanerVehiculo() {
     if (widget.onEscanearVehiculoTap != null) {
       widget.onEscanearVehiculoTap!();
@@ -135,6 +145,7 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
               _vehiculoSeleccionado = vehiculoId;
               _placaValidarResult = null;
               _evidenciaBytes = imageBytes;
+              _evidenciaLicencia = null;
             });
             Navigator.of(context).pop();
             if (vehiculoId.isNotEmpty) _validarPlaca(vehiculoId);
@@ -181,6 +192,14 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
       return;
     }
 
+    if (_evidenciaLicencia == null || _evidenciaLicencia!.isEmpty) {
+      showAppAlertError(
+        context,
+        message: 'Debe adjuntar la imagen de evidencia de licencia',
+      );
+      return;
+    }
+
     final placaValidada = _placaValidarResult?.placa;
     if (placaValidada == null || placaValidada.isEmpty) {
       showAppAlertError(context, message: 'No hay placa validada. Espera a que termine la validación.');
@@ -206,6 +225,7 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
         latitud: position.latitude,
         longitud: position.longitude,
         evidenciaBytes: _evidenciaBytes!,
+        evidenciaLicenciaBytes: _evidenciaLicencia!,
       );
 
       if (!mounted) return;
@@ -392,6 +412,8 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
         _placaValidarResult = result;
         if (result.registered && result.placa != null && result.placa!.isNotEmpty) {
           _vehiculoSeleccionado = result.placa;
+        } else {
+          _evidenciaLicencia = null;
         }
       });
       if (!result.registered) {
@@ -486,6 +508,10 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
                   _buildHeader(context),
                   const SizedBox(height: 24),
                   _buildSelectores(context, operadorNombre),
+                  if (isApertura) ...[
+                    const SizedBox(height: 24),
+                    _buildFotoLicencia(context),
+                  ],
                   if (!isApertura) ...[
                     const SizedBox(height: 24),
                     _buildFotoResguardo(context),
@@ -563,6 +589,86 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
         const SizedBox(height: 16),
         Divider(color: InicioTurnoColors.divider(context), height: 1, thickness: 1),
       ],
+    );
+  }
+
+  Widget _buildFotoLicencia(BuildContext context) {
+    final habilitada = _placaValidarResult?.registered == true;
+    return Opacity(
+      opacity: habilitada ? 1 : 0.55,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: InicioTurnoColors.cardBackground(context),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Evidencia de licencia',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: InicioTurnoColors.textPrimary(context),
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+            const SizedBox(height: 12),
+            DashedBorderBox(
+              child: Material(
+                color: InicioTurnoColors.progressUnfilled(context),
+                child: InkWell(
+                  onTap: habilitada ? _tomarFotoLicencia : null,
+                  child: _evidenciaLicencia != null
+                      ? Image.memory(
+                          _evidenciaLicencia!,
+                          width: double.infinity,
+                          height: double.infinity,
+                          fit: BoxFit.cover,
+                        )
+                      : Container(
+                          width: double.infinity,
+                          alignment: Alignment.center,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.badge_outlined,
+                                color: InicioTurnoColors.placeholder(context),
+                                size: 40,
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                habilitada
+                                    ? 'Capturar licencia'
+                                    : 'Valida la placa para capturar licencia',
+                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                      color: InicioTurnoColors.placeholder(context),
+                                    ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
+                          ),
+                        ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Center(
+              child: Text(
+                habilitada
+                    ? 'Asegúrate que la imagen sea clara y legible'
+                    : 'Disponible después de validar la placa',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: InicioTurnoColors.textSecondary(context),
+                    ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -710,7 +816,12 @@ class _InicioTurnoPageState extends ConsumerState<InicioTurnoPage> {
   Widget _buildSiguienteButton(BuildContext context) {
     final isApertura = widget.checklistType == ChecklistType.apertura;
     final canContinue = isApertura
-        ? (_placaValidarResult != null && _placaValidarResult!.registered)
+        ? (_placaValidarResult != null &&
+            _placaValidarResult!.registered &&
+            _evidenciaBytes != null &&
+            _evidenciaBytes!.isNotEmpty &&
+            _evidenciaLicencia != null &&
+            _evidenciaLicencia!.isNotEmpty)
         : (_fotoResguardo != null && _fotoResguardo!.isNotEmpty);
 
     return SafeArea(

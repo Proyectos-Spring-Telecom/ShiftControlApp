@@ -79,9 +79,11 @@ flutter:
 
   assets:
     - assets/images/home.jpg
+    - assets/images/imagen_nueva.png
     - assets/images/spring_logo.png
     - assets/images/logoHorizontal2.webp
     - assets/images/logoHorizontal.webp
+    - assets/images/logoHorizontall.webp
     - assets/images/logoHorizontall-02.webp
     - assets/images/logoHorizontall-03.webp
     - assets/images/spring_white_vert.png
